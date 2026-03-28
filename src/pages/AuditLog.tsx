@@ -1,21 +1,31 @@
-import { ScrollText } from "lucide-react";
+import { ScrollText, RefreshCw } from "lucide-react";
 import { AuditTimeline } from "@/components/audit/AuditTimeline";
 import { EmptyState } from "@/components/shared/EmptyState";
-import { MOCK_AUDIT_LOGS } from "@/lib/mock-data";
+import { useAuditLog } from "@/hooks/useAuditLog";
 
 export function AuditLog() {
-  const entries = MOCK_AUDIT_LOGS;
+  const { entries, isLoading, refresh } = useAuditLog();
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight">Audit Log</h1>
-        <p className="text-sm text-zinc-500 mt-1">
-          Complete activity timeline for your account
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">Audit Log</h1>
+          <p className="text-sm text-zinc-500 mt-1">
+            Complete activity timeline for your account
+          </p>
+        </div>
+        <button
+          onClick={refresh}
+          disabled={isLoading}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:bg-zinc-700 transition-colors disabled:opacity-50"
+        >
+          <RefreshCw className={`h-3 w-3 ${isLoading ? "animate-spin" : ""}`} />
+          Refresh
+        </button>
       </div>
 
-      {entries.length === 0 ? (
+      {entries.length === 0 && !isLoading ? (
         <EmptyState
           icon={ScrollText}
           title="No activity yet"

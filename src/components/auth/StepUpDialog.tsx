@@ -69,7 +69,12 @@ export function StepUpDialog({
     <Dialog.Root open={open} onOpenChange={(o) => !o && onClose()}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl focus:outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95">
+        <Dialog.Content
+          onOpenAutoFocus={(e) => {
+            e.preventDefault();
+            setTimeout(() => inputs.current[0]?.focus(), 50);
+          }}
+          className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl focus:outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95">
           <Dialog.Close className="absolute right-4 top-4 text-zinc-500 hover:text-zinc-300">
             <X className="h-4 w-4" />
           </Dialog.Close>
@@ -93,10 +98,13 @@ export function StepUpDialog({
                   ref={(el) => { inputs.current[i] = el; }}
                   type="text"
                   inputMode="numeric"
+                  pattern="[0-9]*"
+                  autoComplete="one-time-code"
                   maxLength={1}
                   value={digit}
                   onChange={(e) => handleChange(i, e.target.value)}
                   onKeyDown={(e) => handleKeyDown(i, e)}
+                  onFocus={(e) => e.target.select()}
                   disabled={isVerifying}
                   className={cn(
                     "h-12 w-10 rounded-lg border bg-zinc-800 text-center text-lg font-mono font-medium text-zinc-100 outline-none transition-colors focus:border-brand-primary focus:ring-1 focus:ring-brand-primary",

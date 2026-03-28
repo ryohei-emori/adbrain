@@ -14,34 +14,55 @@ export function useProposals() {
       ? proposals
       : proposals.filter((p) => p.status === filter);
 
-  const fetchFromAgent = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
+  const fetchFromGoAPI = useCallback(async (): Promise<Proposal[] | null> => {
+    try {
+      const resp = await fetch("/api/proposals", {
+        credentials: "include",
+      });
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      if (data.proposals && Array.isArray(data.proposals) && data.proposals.length > 0) {
+        return data.proposals.map((p: Record<string, unknown>) => ({
+          id: p.id,
+          userId: p.user_id,
+          createdAt: p.created_at,
+          status: p.status,
+          platform: p.platform,
+          campaignId: p.campaign_id,
+          campaignName: p.campaign_name,
+          action: p.action,
+          currentValue: p.current_value,
+          proposedValue: p.proposed_value,
+          changeRatio: p.change_ratio,
+          riskLevel: p.risk_level,
+          reasoning: p.reasoning,
+          expectedImpact: p.expected_impact,
+          requiresStepUp: p.requires_step_up,
+          approvedAt: p.approved_at,
+          approvedWithMFA: p.approved_with_mfa,
+        })) as Proposal[];
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const fetchFromAgent = useCallback(async (): Promise<Proposal[] | null> => {
     try {
       const resp = await fetch("/api/agent/invoke", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "analyze",
-          platforms: ["google_ads", "meta_ads"],
-        }),
+        body: JSON.stringify({ platforms: ["google_ads", "meta_ads"] }),
       });
-
-      if (!resp.ok) {
-        if (resp.status === 401 || resp.status === 403) {
-          return null;
-        }
-        throw new Error(`agent invoke returned ${resp.status}`);
-      }
-
+      if (!resp.ok) return null;
       const data = await resp.json();
       if (data.proposals && Array.isArray(data.proposals) && data.proposals.length > 0) {
         return data.proposals as Proposal[];
       }
       return null;
-    } catch (e) {
-      console.warn("Agent invoke failed, using mock proposals:", e);
+    } catch {
       return null;
     }
   }, []);
@@ -49,6 +70,14 @@ export function useProposals() {
   const refresh = useCallback(async () => {
     setIsLoading(true);
     setError(null);
+
+    const goProposals = await fetchFromGoAPI();
+    if (goProposals) {
+      setProposals(goProposals);
+      setIsLoading(false);
+      return;
+    }
+
     const agentProposals = await fetchFromAgent();
     if (agentProposals) {
       setProposals(agentProposals);
@@ -56,7 +85,7 @@ export function useProposals() {
       setProposals(MOCK_PROPOSALS);
     }
     setIsLoading(false);
-  }, [fetchFromAgent]);
+  }, [fetchFromGoAPI, fetchFromAgent]);
 
   useEffect(() => {
     refresh();
@@ -65,11 +94,11 @@ export function useProposals() {
   const approve = useCallback(async (id: string, withMFA = false) => {
     setIsLoading(true);
     try {
-      await fetch("/api/agent/invoke", {
-        method: "POST",
+      await fetch(`/api/proposals?id=${id}`, {
+        method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "approve", proposalId: id, withMFA }),
+        body: JSON.stringify({ status: "approved" }),
       }).catch(() => {});
     } finally {
       setProposals((prev) =>
@@ -91,11 +120,11 @@ export function useProposals() {
   const reject = useCallback(async (id: string) => {
     setIsLoading(true);
     try {
-      await fetch("/api/agent/invoke", {
-        method: "POST",
+      await fetch(`/api/proposals?id=${id}`, {
+        method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "reject", proposalId: id }),
+        body: JSON.stringify({ status: "rejected" }),
       }).catch(() => {});
     } finally {
       setProposals((prev) =>

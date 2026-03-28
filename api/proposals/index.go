@@ -10,6 +10,7 @@ import (
 
 	"github.com/adbrain/adbrain/pkg/auth"
 	"github.com/adbrain/adbrain/pkg/kv"
+	"github.com/adbrain/adbrain/pkg/middleware"
 	"github.com/adbrain/adbrain/pkg/risk"
 )
 
@@ -60,6 +61,10 @@ func generateID() string {
 }
 
 func Handler(w http.ResponseWriter, r *http.Request) {
+	middleware.Logging(handler)(w, r)
+}
+
+func handler(w http.ResponseWriter, r *http.Request) {
 	session, err := auth.GetSession(r)
 	if err != nil {
 		http.Error(w, `{"error":"not authenticated"}`, http.StatusUnauthorized)

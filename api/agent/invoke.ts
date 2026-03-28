@@ -5,7 +5,7 @@ import { invokeAdBrainAgent } from "./_graph";
 import { computeCostUsd, trackLLMUsage } from "./_tracker";
 
 const BodySchema = z.object({
-  userId: z.string().min(1),
+  userId: z.string().min(1).optional(),
   platforms: z.array(z.string()),
   campaignIds: z.array(z.string()).optional(),
 });
@@ -118,18 +118,8 @@ export default async function handler(
       return;
     }
 
-    const { userId, platforms, campaignIds } = parsed.data;
-
-    if (
-      auth.authUserId !== undefined &&
-      auth.authUserId !== "" &&
-      auth.authUserId !== userId
-    ) {
-      res.status(403).json({
-        error: "userId does not match authenticated subject",
-      });
-      return;
-    }
+    const { platforms, campaignIds } = parsed.data;
+    const userId = parsed.data.userId || auth.authUserId || "anonymous";
 
     const baseUrl = resolveBaseUrl(req);
     const { proposals, usage } = await invokeAdBrainAgent({

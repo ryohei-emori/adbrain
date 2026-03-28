@@ -19,6 +19,10 @@ const (
 )
 
 func Handler(w http.ResponseWriter, r *http.Request) {
+	middleware.Logging(handler)(w, r)
+}
+
+func handler(w http.ResponseWriter, r *http.Request) {
 	action := r.URL.Query().Get("action")
 	switch action {
 	case "google-ads":
