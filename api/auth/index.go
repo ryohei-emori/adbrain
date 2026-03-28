@@ -232,7 +232,7 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 func getBaseURL() string {
 	baseURL := os.Getenv("BASE_URL")
 	if baseURL == "" {
-		baseURL = "https://adbrain.vercel.app"
+		baseURL = "https://adbrain-chi.vercel.app"
 	}
 	return baseURL
 }
