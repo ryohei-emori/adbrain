@@ -116,6 +116,7 @@ jobs:
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          NODE_VERSION: "20"
 
       - name: Deploy production
         if: steps.check.outputs.ready == 'true'
