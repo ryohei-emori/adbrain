@@ -2,18 +2,7 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "framework": "vite",
-  "functions": {
-    "api/**/*.go": {
-      "runtime": "@vercel/go@3.4.6",
-      "maxDuration": 30
-    },
-    "api/agent/**/*.ts": {
-      "runtime": "@vercel/node@3.0.0",
-      "maxDuration": 60
-    }
-  },
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/$1" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
 }
