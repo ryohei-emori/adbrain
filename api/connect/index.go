@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"time"
 
@@ -38,8 +39,6 @@ type ConnectionStatus struct {
 	AccountName string   `json:"account_name,omitempty"`
 }
 
-// handleStatus returns connection statuses, using both KV cache and
-// the My Account API's connected-accounts list when possible.
 func handleStatus(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
@@ -55,36 +54,6 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 	statuses := []ConnectionStatus{
 		{Provider: "google-ads", Connected: false, TokenStatus: "disconnected"},
 		{Provider: "meta-ads", Connected: false, TokenStatus: "disconnected"},
-	}
-
-	if session.RefreshToken != "" {
-		myToken, err := auth.GetMyAccountAPIToken(session.RefreshToken)
-		if err == nil {
-			accounts, err := auth.ListConnectedAccounts(myToken)
-			if err == nil {
-				for i, s := range statuses {
-					for _, acct := range accounts {
-						if acct.Connection == s.Provider {
-							statuses[i].Connected = true
-							statuses[i].TokenStatus = "healthy"
-							statuses[i].ConnectedAt = acct.ConnectedAt
-							statuses[i].Scopes = acct.Scopes
-							break
-						}
-					}
-				}
-				w.Header().Set("Content-Type", "application/json")
-				json.NewEncoder(w).Encode(map[string]interface{}{
-					"user_id":     session.UserID,
-					"connections": statuses,
-					"source":      "token_vault",
-				})
-				return
-			}
-			log.Printf("list connected accounts failed (falling back to KV): %v", err)
-		} else {
-			log.Printf("my account token failed (falling back to KV): %v", err)
-		}
 	}
 
 	kvClient, err := kv.New()
@@ -113,8 +82,9 @@ var connectionScopes = map[string][]string{
 	"meta-ads":   {"ads_management", "ads_read", "email"},
 }
 
-// handleInitiate starts the Connected Accounts flow via the My Account API.
-// Returns a JSON object with connect_uri for the frontend to redirect to.
+// handleInitiate builds the OAuth authorize URL.
+// For google-ads: redirects through Auth0 with connection=google-ads (real OAuth).
+// For meta-ads: returns 503 if no credentials are configured (frontend uses demo mode).
 func handleInitiate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost && r.Method != http.MethodGet {
 		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
@@ -128,70 +98,138 @@ func handleInitiate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	provider := r.URL.Query().Get("provider")
-	scopes, ok := connectionScopes[provider]
-	if !ok {
+	if _, ok := connectionScopes[provider]; !ok {
 		http.Error(w, `{"error":"unsupported provider"}`, http.StatusBadRequest)
 		return
 	}
 
-	if session.RefreshToken == "" {
-		http.Error(w, `{"error":"no refresh token, please re-login"}`, http.StatusForbidden)
+	switch provider {
+	case "google-ads":
+		handleGoogleAdsInitiate(w, session)
+	case "meta-ads":
+		handleMetaAdsInitiate(w, session)
+	default:
+		http.Error(w, `{"error":"unsupported provider"}`, http.StatusBadRequest)
+	}
+}
+
+// handleGoogleAdsInitiate tries two approaches:
+// 1. Auth0 Connected Accounts API (Token Vault) — requires refresh token
+// 2. Auth0 /authorize redirect with connection=google-ads — fallback
+func handleGoogleAdsInitiate(w http.ResponseWriter, session *auth.Session) {
+	domain := os.Getenv("AUTH0_DOMAIN")
+	clientID := os.Getenv("AUTH0_CLIENT_ID")
+	baseURL := getBaseURL()
+
+	if domain == "" || clientID == "" {
+		http.Error(w, `{"error":"Auth0 not configured"}`, http.StatusServiceUnavailable)
 		return
 	}
 
-	myToken, err := auth.GetMyAccountAPIToken(session.RefreshToken)
-	if err != nil {
-		log.Printf("my account token failed: %v", err)
-		http.Error(w, `{"error":"failed to get my account token"}`, http.StatusBadGateway)
-		return
+	// Strategy 1: Connected Accounts API (Token Vault)
+	if session.RefreshToken != "" {
+		myToken, err := auth.GetMyAccountAPIToken(session.RefreshToken)
+		if err == nil {
+			stateBytes := make([]byte, 16)
+			rand.Read(stateBytes)
+			state := hex.EncodeToString(stateBytes)
+
+			redirectURI := baseURL + "/dashboard/connections?connect_callback=1"
+			scopes := connectionScopes["google-ads"]
+			result, err := auth.InitiateConnectedAccount(myToken, "google-ads", redirectURI, state, scopes)
+			if err == nil && result.ConnectURI != "" {
+				http.SetCookie(w, &http.Cookie{
+					Name:     "connect_auth_session",
+					Value:    result.AuthSession,
+					Path:     "/",
+					MaxAge:   600,
+					HttpOnly: true,
+					Secure:   true,
+					SameSite: http.SameSiteLaxMode,
+				})
+				http.SetCookie(w, &http.Cookie{
+					Name:     "connect_provider",
+					Value:    "google-ads",
+					Path:     "/",
+					MaxAge:   600,
+					HttpOnly: true,
+					Secure:   true,
+					SameSite: http.SameSiteLaxMode,
+				})
+
+				log.Printf("Connected Accounts API succeeded for google-ads")
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(map[string]string{
+					"connect_uri": result.ConnectURI,
+					"state":       state,
+				})
+				return
+			}
+			log.Printf("Connected Accounts initiate failed: %v", err)
+		} else {
+			log.Printf("My Account API token failed: %v", err)
+		}
+	} else {
+		log.Printf("No refresh token in session, skipping Connected Accounts API")
 	}
+
+	// Strategy 2: Auth0 /authorize redirect with connection=google-ads
+	log.Printf("Falling back to Auth0 /authorize redirect for google-ads")
 
 	stateBytes := make([]byte, 16)
 	if _, err := rand.Read(stateBytes); err != nil {
 		http.Error(w, `{"error":"failed to generate state"}`, http.StatusInternalServerError)
 		return
 	}
-	state := hex.EncodeToString(stateBytes)
+	nonce := hex.EncodeToString(stateBytes)
+	state := "connect:google-ads:" + nonce
 
-	baseURL := getBaseURL()
-	redirectURI := baseURL + "/dashboard/connections?connect_callback=1"
+	http.SetCookie(w, &http.Cookie{
+		Name:     "connect_state",
+		Value:    state + "|" + session.UserID,
+		Path:     "/",
+		MaxAge:   600,
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+	})
 
-	result, err := auth.InitiateConnectedAccount(myToken, provider, redirectURI, state, scopes)
-	if err != nil {
-		log.Printf("initiate connected account failed: %v", err)
-		http.Error(w, `{"error":"failed to initiate connection","details":"`+err.Error()+`"}`, http.StatusBadGateway)
-		return
+	params := url.Values{
+		"response_type": {"code"},
+		"client_id":     {clientID},
+		"redirect_uri":  {baseURL + "/api/auth/callback"},
+		"connection":    {"google-ads"},
+		"scope":         {"openid email profile offline_access"},
+		"state":         {state},
+		"prompt":        {"consent"},
 	}
 
-	http.SetCookie(w, &http.Cookie{
-		Name:     "connect_auth_session",
-		Value:    result.AuthSession,
-		Path:     "/",
-		MaxAge:   600,
-		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteLaxMode,
-	})
-
-	http.SetCookie(w, &http.Cookie{
-		Name:     "connect_provider",
-		Value:    provider,
-		Path:     "/",
-		MaxAge:   600,
-		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteLaxMode,
-	})
+	connectURI := "https://" + domain + "/authorize?" + params.Encode()
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
-		"connect_uri": result.ConnectURI,
+		"connect_uri": connectURI,
 		"state":       state,
 	})
 }
 
-// handleComplete finalizes the Connected Accounts flow after the user
-// has authorized with the external provider and been redirected back.
+func handleMetaAdsInitiate(w http.ResponseWriter, _ *auth.Session) {
+	appID := os.Getenv("META_ADS_APP_ID")
+	if appID == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": "Meta Ads credentials not configured",
+			"demo":  true,
+		})
+		return
+	}
+
+	http.Error(w, `{"error":"meta-ads direct OAuth not yet implemented"}`, http.StatusNotImplemented)
+}
+
+// handleComplete is called by the auth callback handler when it detects a
+// connect: state prefix. It stores the connection in KV.
 func handleComplete(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost && r.Method != http.MethodGet {
 		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
@@ -204,58 +242,24 @@ func handleComplete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	connectCode := r.URL.Query().Get("connect_code")
-	if connectCode == "" {
-		http.Error(w, `{"error":"missing connect_code"}`, http.StatusBadRequest)
+	provider := r.URL.Query().Get("provider")
+	if provider == "" {
+		http.Error(w, `{"error":"missing provider"}`, http.StatusBadRequest)
 		return
 	}
 
-	authSessionCookie, err := r.Cookie("connect_auth_session")
-	if err != nil || authSessionCookie.Value == "" {
-		http.Error(w, `{"error":"missing auth_session cookie"}`, http.StatusBadRequest)
-		return
-	}
-	authSession := authSessionCookie.Value
-
-	providerCookie, _ := r.Cookie("connect_provider")
-	provider := ""
-	if providerCookie != nil {
-		provider = providerCookie.Value
-	}
-
-	if session.RefreshToken == "" {
-		http.Error(w, `{"error":"no refresh token"}`, http.StatusForbidden)
-		return
-	}
-
-	myToken, err := auth.GetMyAccountAPIToken(session.RefreshToken)
-	if err != nil {
-		log.Printf("my account token failed during complete: %v", err)
-		http.Error(w, `{"error":"failed to get my account token"}`, http.StatusBadGateway)
-		return
-	}
-
-	if err := auth.CompleteConnectedAccount(myToken, connectCode, authSession); err != nil {
-		log.Printf("complete connected account failed: %v", err)
-		http.Error(w, `{"error":"failed to complete connection","details":"`+err.Error()+`"}`, http.StatusBadGateway)
-		return
-	}
-
-	clearConnectCookies(w)
-
-	if provider != "" {
-		kvClient, kvErr := kv.New()
-		if kvErr == nil {
-			status := ConnectionStatus{
-				Provider:    provider,
-				Connected:   true,
-				ConnectedAt: time.Now().UTC().Format(time.RFC3339),
-				TokenStatus: "healthy",
-				Scopes:      connectionScopes[provider],
-			}
-			data, _ := json.Marshal(status)
-			_ = kvClient.Set("connection:"+session.UserID+":"+provider, string(data))
+	kvClient, kvErr := kv.New()
+	if kvErr == nil {
+		status := ConnectionStatus{
+			Provider:    provider,
+			Connected:   true,
+			ConnectedAt: time.Now().UTC().Format(time.RFC3339),
+			TokenStatus: "healthy",
+			Scopes:      connectionScopes[provider],
+			AccountName: providerDisplayName(provider) + " Account",
 		}
+		data, _ := json.Marshal(status)
+		_ = kvClient.Set("connection:"+session.UserID+":"+provider, string(data))
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -265,7 +269,6 @@ func handleComplete(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleDisconnect removes a connected account via the My Account API and KV.
 func handleDisconnect(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost && r.Method != http.MethodDelete {
 		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
@@ -284,18 +287,10 @@ func handleDisconnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if session.RefreshToken != "" {
-		myToken, err := auth.GetMyAccountAPIToken(session.RefreshToken)
-		if err == nil {
-			if err := auth.DeleteConnectedAccount(myToken, provider); err != nil {
-				log.Printf("delete connected account via API failed: %v", err)
-			}
-		}
-	}
-
 	kvClient, kvErr := kv.New()
 	if kvErr == nil {
 		_ = kvClient.Delete("connection:" + session.UserID + ":" + provider)
+		_ = kvClient.Delete("token:" + session.UserID + ":" + provider)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -305,15 +300,15 @@ func handleDisconnect(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func clearConnectCookies(w http.ResponseWriter) {
-	for _, name := range []string{"connect_auth_session", "connect_provider"} {
-		http.SetCookie(w, &http.Cookie{
-			Name:   name,
-			Value:  "",
-			Path:   "/",
-			MaxAge: -1,
-		})
+func providerDisplayName(provider string) string {
+	names := map[string]string{
+		"google-ads": "Google Ads",
+		"meta-ads":   "Meta Ads",
 	}
+	if name, ok := names[provider]; ok {
+		return name
+	}
+	return provider
 }
 
 func getBaseURL() string {

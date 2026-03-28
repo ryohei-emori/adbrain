@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Shield, UserCheck, BarChart3, Bot, Check } from "lucide-react";
 import { WizardStepper } from "@/components/onboarding/WizardStepper";
 import { ScopeVisualizer } from "@/components/connections/ScopeVisualizer";
@@ -12,13 +12,34 @@ import { cn } from "@/lib/cn";
 const STEPS = ["Welcome", "Connect", "Review"];
 
 export function Onboarding() {
-  const [step, setStep] = useState(0);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const connectedParam = searchParams.get("connected");
+  const connectError = searchParams.get("connect_error");
+
+  const [step, setStep] = useState(connectedParam ? 1 : 0);
   const { user } = useAuth();
-  const { connections, connect } = useConnections();
+  const { connections, connect, refresh } = useConnections();
   const navigate = useNavigate();
   const { toast } = useToast();
 
   const [connecting, setConnecting] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (connectedParam) {
+      refresh();
+      toast("success", "Connected!", `${connectedParam} has been connected successfully.`);
+      setSearchParams({}, { replace: true });
+      setStep(1);
+    }
+  }, [connectedParam, refresh, toast, setSearchParams]);
+
+  useEffect(() => {
+    if (connectError) {
+      toast("error", "Connection failed", connectError);
+      setSearchParams({}, { replace: true });
+      setStep(1);
+    }
+  }, [connectError, toast, setSearchParams]);
 
   const connectedProviders = connections
     .filter((c) => c.status === "connected" && c.provider !== "tiktok-ads")
@@ -57,7 +78,7 @@ export function Onboarding() {
           {step === 0 && (
             <div className="text-center">
               <h2 className="text-xl font-semibold mb-2">
-                Welcome{user?.name ? `, ${user.name.split(" ")[0]}` : ""}! 👋
+                Welcome{user?.name ? `, ${user.name.split(" ")[0]}` : ""}!
               </h2>
               <p className="text-sm text-zinc-400 mb-8">
                 Let's connect your ad accounts so our AI agent can start optimizing your campaigns.
@@ -95,9 +116,9 @@ export function Onboarding() {
 
               <div className="space-y-4">
                 {([
-                  { provider: "google-ads" as const, name: "Google Ads", color: "bg-blue-600" },
-                  { provider: "meta-ads" as const, name: "Meta Ads", color: "bg-indigo-600" },
-                ]).map(({ provider, name, color }) => {
+                  { provider: "google-ads" as const, name: "Google Ads", color: "bg-blue-600", real: true },
+                  { provider: "meta-ads" as const, name: "Meta Ads", color: "bg-indigo-600", real: false },
+                ]).map(({ provider, name, color, real }) => {
                   const isConnected = connectedProviders.includes(provider);
                   return (
                     <div
@@ -114,6 +135,11 @@ export function Onboarding() {
                         {isConnected && (
                           <span className="flex items-center gap-1 text-xs text-green-400">
                             <Check className="h-3.5 w-3.5" /> Connected
+                          </span>
+                        )}
+                        {!isConnected && !real && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-700 text-zinc-400">
+                            Demo
                           </span>
                         )}
                       </div>
@@ -157,7 +183,7 @@ export function Onboarding() {
               </div>
 
               <p className="text-xs text-zinc-500 text-center">
-                You can change these permissions anytime from Settings → Connected Accounts.
+                You can change these permissions anytime from Settings &rarr; Connected Accounts.
               </p>
             </div>
           )}
@@ -169,7 +195,7 @@ export function Onboarding() {
                 onClick={() => setStep(step - 1)}
                 className="rounded-lg px-4 py-2 text-sm font-medium text-zinc-400 hover:text-zinc-200 transition-colors"
               >
-                ← Back
+                &larr; Back
               </button>
             ) : (
               <div />
@@ -180,14 +206,14 @@ export function Onboarding() {
                 disabled={step === 1 && connectedProviders.length === 0}
                 className="rounded-lg bg-brand-primary px-6 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {step === 0 ? "Let's Go →" : "Next →"}
+                {step === 0 ? "Let's Go \u2192" : "Next \u2192"}
               </button>
             ) : (
               <button
                 onClick={handleFinish}
                 className="rounded-lg bg-brand-primary px-6 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
               >
-                Start Optimizing →
+                Start Optimizing \u2192
               </button>
             )}
           </div>

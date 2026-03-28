@@ -127,17 +127,25 @@ export function useConnections() {
         method: "POST",
         credentials: "include",
       });
-      if (!resp.ok) {
-        throw new Error(`status ${resp.status}`);
+
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.connect_uri) {
+          window.location.href = data.connect_uri;
+          return;
+        }
       }
-      const data = await resp.json();
-      if (data.connect_uri) {
-        window.location.href = data.connect_uri;
+
+      const body = await resp.json().catch(() => ({ error: "" }));
+      const isDemoFallback = resp.status === 503 || body.demo;
+      if (isDemoFallback) {
+        await new Promise((r) => setTimeout(r, 800));
+        simulateLocalConnect(provider);
         return;
       }
-      throw new Error("No connect_uri");
+
+      throw new Error(body.error || `status ${resp.status}`);
     } catch {
-      // API unavailable — simulate connection locally for demo
       await new Promise((r) => setTimeout(r, 800));
       simulateLocalConnect(provider);
     } finally {

@@ -6,11 +6,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/adbrain/adbrain/pkg/auth"
+	"github.com/adbrain/adbrain/pkg/kv"
 )
 
 func Handler(w http.ResponseWriter, r *http.Request) {
@@ -139,27 +143,47 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 	code := r.URL.Query().Get("code")
 	state := r.URL.Query().Get("state")
 	errParam := r.URL.Query().Get("error")
+	baseURL := getBaseURL()
+
+	// Detect Connect flow (state prefix "connect:")
+	isConnectFlow := strings.HasPrefix(state, "connect:")
+	var connectProvider string
+	if isConnectFlow {
+		parts := strings.SplitN(state, ":", 3)
+		if len(parts) >= 2 {
+			connectProvider = parts[1]
+		}
+	}
 
 	if errParam != "" {
 		desc := r.URL.Query().Get("error_description")
+		if isConnectFlow {
+			http.Redirect(w, r, baseURL+"/onboarding?connect_error="+url.QueryEscape(desc), http.StatusFound)
+			return
+		}
 		http.Error(w, fmt.Sprintf(`{"error":"%s","description":"%s"}`, errParam, desc), http.StatusBadRequest)
 		return
 	}
 
-	stateCookie, err := r.Cookie("oauth_state")
-	if err != nil || stateCookie.Value != state {
-		http.Error(w, `{"error":"invalid state parameter"}`, http.StatusBadRequest)
-		return
+	if !isConnectFlow {
+		stateCookie, err := r.Cookie("oauth_state")
+		if err != nil || stateCookie.Value != state {
+			http.Error(w, `{"error":"invalid state parameter"}`, http.StatusBadRequest)
+			return
+		}
+		http.SetCookie(w, &http.Cookie{
+			Name:   "oauth_state",
+			Value:  "",
+			Path:   "/",
+			MaxAge: -1,
+		})
 	}
 
-	http.SetCookie(w, &http.Cookie{
-		Name:   "oauth_state",
-		Value:  "",
-		Path:   "/",
-		MaxAge: -1,
-	})
-
 	if code == "" {
+		if isConnectFlow {
+			http.Redirect(w, r, baseURL+"/onboarding?connect_error=missing_code", http.StatusFound)
+			return
+		}
 		http.Error(w, `{"error":"missing authorization code"}`, http.StatusBadRequest)
 		return
 	}
@@ -167,7 +191,6 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 	domain := os.Getenv("AUTH0_DOMAIN")
 	clientID := os.Getenv("AUTH0_CLIENT_ID")
 	clientSecret := os.Getenv("AUTH0_CLIENT_SECRET")
-	baseURL := getBaseURL()
 
 	tokenParams := url.Values{
 		"grant_type":    {"authorization_code"},
@@ -179,6 +202,10 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 
 	tokenResp, err := http.PostForm("https://"+domain+"/oauth/token", tokenParams)
 	if err != nil {
+		if isConnectFlow {
+			http.Redirect(w, r, baseURL+"/onboarding?connect_error=token_exchange_failed", http.StatusFound)
+			return
+		}
 		http.Error(w, `{"error":"token exchange failed"}`, http.StatusInternalServerError)
 		return
 	}
@@ -186,12 +213,21 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 
 	tokenBody, _ := io.ReadAll(tokenResp.Body)
 	if tokenResp.StatusCode != http.StatusOK {
+		if isConnectFlow {
+			log.Printf("connect token exchange failed (status %d): %s", tokenResp.StatusCode, string(tokenBody))
+			http.Redirect(w, r, baseURL+"/onboarding?connect_error=token_exchange_error", http.StatusFound)
+			return
+		}
 		http.Error(w, fmt.Sprintf(`{"error":"token exchange failed","details":%s}`, string(tokenBody)), http.StatusInternalServerError)
 		return
 	}
 
 	var tokens tokenResponse
 	if err := json.Unmarshal(tokenBody, &tokens); err != nil {
+		if isConnectFlow {
+			http.Redirect(w, r, baseURL+"/onboarding?connect_error=parse_error", http.StatusFound)
+			return
+		}
 		http.Error(w, `{"error":"failed to parse token response"}`, http.StatusInternalServerError)
 		return
 	}
@@ -201,6 +237,10 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 
 	userInfoResp, err := http.DefaultClient.Do(userInfoReq)
 	if err != nil {
+		if isConnectFlow {
+			http.Redirect(w, r, baseURL+"/onboarding?connect_error=userinfo_failed", http.StatusFound)
+			return
+		}
 		http.Error(w, `{"error":"failed to get user info"}`, http.StatusInternalServerError)
 		return
 	}
@@ -208,10 +248,21 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 
 	var userInfo userInfoResponse
 	if err := json.NewDecoder(userInfoResp.Body).Decode(&userInfo); err != nil {
+		if isConnectFlow {
+			http.Redirect(w, r, baseURL+"/onboarding?connect_error=userinfo_parse_error", http.StatusFound)
+			return
+		}
 		http.Error(w, `{"error":"failed to parse user info"}`, http.StatusInternalServerError)
 		return
 	}
 
+	// Connect flow: store connection in KV, redirect to onboarding
+	if isConnectFlow && connectProvider != "" {
+		handleConnectCallback(w, r, userInfo.Sub, connectProvider, tokens.AccessToken, baseURL)
+		return
+	}
+
+	// Normal login flow: create session
 	session := &auth.Session{
 		UserID:       userInfo.Sub,
 		Email:        userInfo.Email,
@@ -227,6 +278,55 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, baseURL+"/dashboard", http.StatusFound)
+}
+
+func handleConnectCallback(w http.ResponseWriter, r *http.Request, userID, provider, accessToken, baseURL string) {
+	kvClient, kvErr := kv.New()
+	if kvErr == nil {
+		scopes := map[string][]string{
+			"google-ads": {"https://www.googleapis.com/auth/adwords", "openid", "profile", "email"},
+			"meta-ads":   {"ads_management", "ads_read", "email"},
+		}
+		names := map[string]string{
+			"google-ads": "Google Ads",
+			"meta-ads":   "Meta Ads",
+		}
+
+		type ConnStatus struct {
+			Provider    string   `json:"provider"`
+			Connected   bool     `json:"connected"`
+			ConnectedAt string   `json:"connected_at"`
+			TokenStatus string   `json:"token_status"`
+			Scopes      []string `json:"scopes,omitempty"`
+			AccountName string   `json:"account_name,omitempty"`
+		}
+
+		status := ConnStatus{
+			Provider:    provider,
+			Connected:   true,
+			ConnectedAt: time.Now().UTC().Format(time.RFC3339),
+			TokenStatus: "healthy",
+			Scopes:      scopes[provider],
+			AccountName: names[provider] + " Account",
+		}
+		data, _ := json.Marshal(status)
+		_ = kvClient.Set("connection:"+userID+":"+provider, string(data))
+
+		tokenData, _ := json.Marshal(map[string]string{
+			"access_token": accessToken,
+		})
+		_ = kvClient.Set("token:"+userID+":"+provider, string(tokenData))
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:   "connect_state",
+		Value:  "",
+		Path:   "/",
+		MaxAge: -1,
+	})
+
+	log.Printf("OAuth connect successful: provider=%s user=%s", provider, userID)
+	http.Redirect(w, r, baseURL+"/onboarding?connected="+provider, http.StatusFound)
 }
 
 func getBaseURL() string {
