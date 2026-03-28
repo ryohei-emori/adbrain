@@ -103,13 +103,9 @@ jobs:
         if: steps.check.outputs.ready == 'true'
         run: npm ci
 
-      - name: Build
-        if: steps.check.outputs.ready == 'true'
-        run: npm run build
-
       - name: Deploy preview
         if: steps.check.outputs.ready == 'true'
-        run: npx vercel deploy ./dist --token=${{ secrets.VERCEL_TOKEN }}
+        run: npx vercel deploy --token=${{ secrets.VERCEL_TOKEN }} --yes
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
