@@ -43,10 +43,13 @@ resource "auth0_client" "adbrain_web" {
   }
 
   refresh_token {
-    rotation_type   = "rotating"
-    expiration_type = "expiring"
-    leeway          = 0
-    token_lifetime  = 2592000
+    rotation_type                = "non-rotating"
+    expiration_type              = "non-expiring"
+    leeway                       = 0
+    token_lifetime               = 31557600
+    infinite_token_lifetime      = true
+    idle_token_lifetime          = 2592000
+    infinite_idle_token_lifetime = true
   }
 }
 

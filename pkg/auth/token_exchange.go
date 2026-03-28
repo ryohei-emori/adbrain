@@ -27,7 +27,7 @@ func (e *TokenExchangeError) Error() string {
 
 func BuildTokenExchangeParams(refreshToken, connection string) url.Values {
 	return url.Values{
-		"grant_type":           {"urn:auth0:params:oauth:grant-type:token-exchange"},
+		"grant_type":           {"urn:auth0:params:oauth:grant-type:token-exchange:federated-connection-access-token"},
 		"subject_token":        {refreshToken},
 		"subject_token_type":   {"urn:ietf:params:oauth:token-type:refresh_token"},
 		"requested_token_type": {"urn:auth0:params:oauth:token-type:external-provider-token"},
