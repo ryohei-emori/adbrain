@@ -6,6 +6,7 @@ import { ScopeVisualizer } from "@/components/connections/ScopeVisualizer";
 import { useAuth } from "@/hooks/useAuth";
 import { useConnections } from "@/hooks/useConnections";
 import { useToast } from "@/components/shared/Toast";
+import { markOnboarded } from "@/components/auth/ProtectedRoute";
 import { cn } from "@/lib/cn";
 
 const STEPS = ["Welcome", "Connect", "Review"];
@@ -30,6 +31,7 @@ export function Onboarding() {
   };
 
   const handleFinish = () => {
+    markOnboarded();
     toast("success", "Setup complete!", "Your AI agent is ready to optimize.");
     navigate("/dashboard");
   };

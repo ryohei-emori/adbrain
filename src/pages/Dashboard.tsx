@@ -3,9 +3,7 @@ import { Link } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { PerformanceChart } from "@/components/dashboard/PerformanceChart";
-import { LLMUsageCard } from "@/components/dashboard/LLMUsageCard";
 import { ProposalCard } from "@/components/proposals/ProposalCard";
-import { MOCK_LLM_USAGE } from "@/lib/mock-data";
 import { StepUpDialog } from "@/components/auth/StepUpDialog";
 import { useProposals } from "@/hooks/useProposals";
 import { useMetrics } from "@/hooks/useMetrics";
@@ -92,12 +90,7 @@ export function Dashboard() {
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2">
-          <PerformanceChart />
-        </div>
-        <LLMUsageCard usage={MOCK_LLM_USAGE} />
-      </div>
+      <PerformanceChart />
 
       <div>
         <div className="flex items-center justify-between mb-4">
