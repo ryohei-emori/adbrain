@@ -227,6 +227,58 @@ Auth0 Tenant: adbrain-dev
     ▼
 [Google Ads / Meta API] ← 変更実行
 ```
+
+### Token Vault Architecture
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant FE as Frontend
+    participant BE as Go Backend
+    participant A0 as Auth0
+    participant MA as My Account API
+    participant TV as Token Vault
+    participant GAds as Google Ads API
+
+    Note over U,GAds: Phase 1: Login
+    U->>FE: Click Login
+    FE->>BE: GET /api/auth/login
+    BE->>A0: /authorize (google-oauth2)
+    A0->>U: Google Login Screen
+    U->>A0: Authorize
+    A0->>BE: callback with code
+    BE->>A0: /oauth/token (code exchange)
+    A0-->>BE: access_token + refresh_token
+    BE->>FE: Set session cookie
+
+    Note over U,GAds: Phase 2: Connect Google Ads
+    U->>FE: Click "Connect Google Ads"
+    FE->>BE: POST /api/connect/initiate
+    BE->>A0: Exchange RT for My Account API AT
+    A0-->>BE: my_account_api_access_token
+    BE->>MA: POST /me/v1/connected-accounts/connect
+    MA-->>BE: connect_uri + auth_session
+    BE->>FE: Return connect_uri
+    FE->>U: Redirect to connect_uri
+    U->>A0: Authorize Google Ads scopes
+    A0->>FE: Redirect with connect_code
+    FE->>BE: POST /api/connect/complete
+    BE->>MA: POST /me/v1/connected-accounts/complete
+    MA->>TV: Store Google Ads tokens
+    MA-->>BE: 200 OK
+    BE->>FE: Connection successful
+
+    Note over U,GAds: Phase 3: Agent Uses Token Vault
+    U->>FE: Approve agent proposal
+    FE->>BE: POST /api/agent/invoke
+    BE->>A0: Token Exchange (RT -> external token)
+    A0->>TV: Retrieve stored Google Ads token
+    A0-->>BE: google_ads_access_token
+    BE->>GAds: GET /campaigns (with token)
+    GAds-->>BE: Campaign data
+    BE->>FE: Agent response
+```
+
 ---
 ## 3. Go バックエンド設計
 ### 3.1 ディレクトリ構造

@@ -1,21 +1,27 @@
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { LLMUsageCard } from "@/components/dashboard/LLMUsageCard";
 import { MOCK_LLM_USAGE } from "@/lib/mock-data";
-import { User, Mail, Shield } from "lucide-react";
+import { User, Mail, Shield, RotateCcw } from "lucide-react";
+import { resetOnboarded } from "@/components/auth/ProtectedRoute";
 
 export function Settings() {
   const { user } = useAuth();
+  const navigate = useNavigate();
+
+  const handleResetOnboarding = () => {
+    resetOnboarded();
+    navigate("/onboarding");
+  };
 
   return (
     <div className="space-y-6 max-w-2xl">
       <div>
         <h1 className="text-xl font-semibold tracking-tight">Settings</h1>
         <p className="text-sm text-zinc-500 mt-1">
-          Account settings and LLM usage
+          Account settings and preferences
         </p>
       </div>
-
-      <LLMUsageCard usage={MOCK_LLM_USAGE} />
 
       {/* Account Info */}
       <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-6">
@@ -49,6 +55,23 @@ export function Settings() {
             </div>
           </div>
         </div>
+      </div>
+
+      <LLMUsageCard usage={MOCK_LLM_USAGE} />
+
+      {/* Testing / Debug */}
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-6">
+        <h3 className="text-sm font-semibold text-zinc-100 mb-2">Testing</h3>
+        <p className="text-xs text-zinc-500 mb-4">
+          Re-run the onboarding wizard to re-connect accounts or review permissions.
+        </p>
+        <button
+          onClick={handleResetOnboarding}
+          className="flex items-center gap-2 rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 hover:bg-zinc-800 transition-colors"
+        >
+          <RotateCcw className="h-3.5 w-3.5" />
+          Restart Onboarding
+        </button>
       </div>
 
       {/* Danger Zone */}

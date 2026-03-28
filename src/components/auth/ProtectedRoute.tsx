@@ -1,4 +1,4 @@
-import { Navigate, useLocation } from "react-router-dom";
+import { Navigate, useLocation, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import type { ReactNode } from "react";
 
@@ -6,6 +6,10 @@ const ONBOARDED_KEY = "adbrain_onboarded";
 
 export function markOnboarded() {
   localStorage.setItem(ONBOARDED_KEY, "1");
+}
+
+export function resetOnboarded() {
+  localStorage.removeItem(ONBOARDED_KEY);
 }
 
 export function isOnboarded(): boolean {
@@ -19,6 +23,12 @@ interface ProtectedRouteProps {
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
   const { isAuthenticated, isLoading } = useAuth();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
+
+  if (searchParams.get("reset_onboarding") === "1") {
+    resetOnboarded();
+    return <Navigate to="/onboarding" replace />;
+  }
 
   if (isLoading) {
     return (

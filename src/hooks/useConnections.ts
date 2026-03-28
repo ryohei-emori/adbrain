@@ -128,15 +128,13 @@ export function useConnections() {
         credentials: "include",
       });
 
-      if (resp.ok) {
-        const data = await resp.json();
-        if (data.connect_uri) {
-          window.location.href = data.connect_uri;
-          return;
-        }
+      const body = await resp.json().catch(() => ({ error: "" }));
+
+      if (resp.ok && body.connect_uri) {
+        window.location.href = body.connect_uri;
+        return;
       }
 
-      const body = await resp.json().catch(() => ({ error: "" }));
       const isDemoFallback = resp.status === 503 || body.demo;
       if (isDemoFallback) {
         await new Promise((r) => setTimeout(r, 800));
