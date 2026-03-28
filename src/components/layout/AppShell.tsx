@@ -134,7 +134,7 @@ export function AppShell() {
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto scrollbar-thin p-4 sm:p-6 pb-20 sm:pb-6">
+        <main className="flex-1 overflow-y-auto scrollbar-thin p-4 sm:p-6 pb-20 md:pb-6">
           <Outlet />
         </main>
       </div>
