@@ -14,32 +14,10 @@ jobs:
     uses: ./.github/workflows/ci.yml
 
   terraform-dev:
-    name: Terraform apply (dev)
+    name: Terraform (dev)
     needs: test
     runs-on: ubuntu-latest
     environment: development
-    env:
-      TF_TOKEN_app_terraform_io: ${{ secrets.TF_API_TOKEN }}
-      TF_VAR_auth0_domain: ${{ secrets.AUTH0_DEV_DOMAIN }}
-      TF_VAR_auth0_client_id: ${{ secrets.AUTH0_DEV_TF_CLIENT_ID }}
-      TF_VAR_auth0_client_secret: ${{ secrets.AUTH0_DEV_TF_CLIENT_SECRET }}
-      TF_VAR_vercel_api_token: ${{ secrets.VERCEL_TOKEN }}
-      TF_VAR_github_repo: ${{ github.repository }}
-      TF_VAR_vercel_team_id: ${{ vars.VERCEL_TEAM_ID }}
-      TF_VAR_auth0_audience: ${{ secrets.AUTH0_AUDIENCE_DEV }}
-      TF_VAR_google_oauth_client_id: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
-      TF_VAR_google_oauth_client_secret: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
-      TF_VAR_google_ads_client_id: ${{ secrets.GOOGLE_ADS_CLIENT_ID }}
-      TF_VAR_google_ads_client_secret: ${{ secrets.GOOGLE_ADS_CLIENT_SECRET }}
-      TF_VAR_google_ads_developer_token: ${{ secrets.GOOGLE_ADS_DEVELOPER_TOKEN }}
-      TF_VAR_meta_app_id: ${{ secrets.META_APP_ID }}
-      TF_VAR_meta_app_secret: ${{ secrets.META_APP_SECRET }}
-      TF_VAR_xai_api_key: ${{ secrets.XAI_API_KEY }}
-      TF_VAR_google_ai_api_key: ${{ secrets.GOOGLE_AI_API_KEY }}
-      TF_VAR_session_secret: ${{ secrets.SESSION_SECRET_DEV }}
-      TF_VAR_auth0_log_stream_token: ${{ secrets.AUTH0_LOG_STREAM_TOKEN_DEV }}
-      TF_VAR_vercel_domain: ${{ secrets.VERCEL_DOMAIN_DEV }}
-      TF_VAR_environment: dev
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -51,15 +29,71 @@ jobs:
 
       - name: Terraform init
         working-directory: infra
-        run: terraform init -input=false
+        run: terraform init -backend=false -input=false
 
-      - name: Prepare dev.tfvars
+      - name: Terraform validate
         working-directory: infra
-        run: cp envs/dev.tfvars.example envs/dev.tfvars
+        run: terraform validate
 
-      - name: Terraform apply
+      - name: Terraform plan (dev)
+        if: env.TF_VAR_auth0_domain != ''
         working-directory: infra
-        run: terraform apply -auto-approve -var-file=envs/dev.tfvars
+        env:
+          TF_VAR_auth0_domain: ${{ secrets.AUTH0_DEV_DOMAIN }}
+          TF_VAR_auth0_client_id: ${{ secrets.AUTH0_DEV_TF_CLIENT_ID }}
+          TF_VAR_auth0_client_secret: ${{ secrets.AUTH0_DEV_TF_CLIENT_SECRET }}
+          TF_VAR_vercel_api_token: ${{ secrets.VERCEL_TOKEN }}
+          TF_VAR_github_repo: ${{ github.repository }}
+          TF_VAR_vercel_team_id: ${{ vars.VERCEL_TEAM_ID }}
+          TF_VAR_auth0_audience: ${{ secrets.AUTH0_AUDIENCE_DEV }}
+          TF_VAR_google_oauth_client_id: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          TF_VAR_google_oauth_client_secret: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          TF_VAR_google_ads_client_id: ${{ secrets.GOOGLE_ADS_CLIENT_ID }}
+          TF_VAR_google_ads_client_secret: ${{ secrets.GOOGLE_ADS_CLIENT_SECRET }}
+          TF_VAR_google_ads_developer_token: ${{ secrets.GOOGLE_ADS_DEVELOPER_TOKEN }}
+          TF_VAR_meta_app_id: ${{ secrets.META_APP_ID }}
+          TF_VAR_meta_app_secret: ${{ secrets.META_APP_SECRET }}
+          TF_VAR_xai_api_key: ${{ secrets.XAI_API_KEY }}
+          TF_VAR_google_ai_api_key: ${{ secrets.GOOGLE_AI_API_KEY }}
+          TF_VAR_session_secret: ${{ secrets.SESSION_SECRET_DEV }}
+          TF_VAR_auth0_log_stream_token: ${{ secrets.AUTH0_LOG_STREAM_TOKEN_DEV }}
+          TF_VAR_vercel_domain: ${{ secrets.VERCEL_DOMAIN_DEV }}
+          TF_VAR_environment: dev
+        run: |
+          cp envs/dev.tfvars.example envs/dev.tfvars
+          terraform plan -var-file=envs/dev.tfvars -out=dev.tfplan
+
+      - name: Terraform apply (dev)
+        if: env.TF_VAR_auth0_domain != ''
+        working-directory: infra
+        env:
+          TF_VAR_auth0_domain: ${{ secrets.AUTH0_DEV_DOMAIN }}
+          TF_VAR_auth0_client_id: ${{ secrets.AUTH0_DEV_TF_CLIENT_ID }}
+          TF_VAR_auth0_client_secret: ${{ secrets.AUTH0_DEV_TF_CLIENT_SECRET }}
+          TF_VAR_vercel_api_token: ${{ secrets.VERCEL_TOKEN }}
+          TF_VAR_github_repo: ${{ github.repository }}
+          TF_VAR_vercel_team_id: ${{ vars.VERCEL_TEAM_ID }}
+          TF_VAR_auth0_audience: ${{ secrets.AUTH0_AUDIENCE_DEV }}
+          TF_VAR_google_oauth_client_id: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          TF_VAR_google_oauth_client_secret: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          TF_VAR_google_ads_client_id: ${{ secrets.GOOGLE_ADS_CLIENT_ID }}
+          TF_VAR_google_ads_client_secret: ${{ secrets.GOOGLE_ADS_CLIENT_SECRET }}
+          TF_VAR_google_ads_developer_token: ${{ secrets.GOOGLE_ADS_DEVELOPER_TOKEN }}
+          TF_VAR_meta_app_id: ${{ secrets.META_APP_ID }}
+          TF_VAR_meta_app_secret: ${{ secrets.META_APP_SECRET }}
+          TF_VAR_xai_api_key: ${{ secrets.XAI_API_KEY }}
+          TF_VAR_google_ai_api_key: ${{ secrets.GOOGLE_AI_API_KEY }}
+          TF_VAR_session_secret: ${{ secrets.SESSION_SECRET_DEV }}
+          TF_VAR_auth0_log_stream_token: ${{ secrets.AUTH0_LOG_STREAM_TOKEN_DEV }}
+          TF_VAR_vercel_domain: ${{ secrets.VERCEL_DOMAIN_DEV }}
+          TF_VAR_environment: dev
+        run: terraform apply -auto-approve dev.tfplan
+
+      - name: Skip notice
+        if: env.TF_VAR_auth0_domain == ''
+        env:
+          TF_VAR_auth0_domain: ${{ secrets.AUTH0_DEV_DOMAIN }}
+        run: echo "::notice::Terraform apply skipped — AUTH0_DEV_DOMAIN secret not configured. Set up secrets to enable deployment."
 
   deploy-dev:
     name: Vercel preview deploy
@@ -67,31 +101,47 @@ jobs:
     runs-on: ubuntu-latest
     environment: development
     steps:
+      - name: Check secrets
+        id: check
+        run: |
+          if [ -n "${{ secrets.VERCEL_TOKEN }}" ] && [ -n "${{ secrets.VERCEL_ORG_ID }}" ] && [ -n "${{ secrets.VERCEL_PROJECT_ID }}" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Vercel deploy skipped — VERCEL_TOKEN, VERCEL_ORG_ID, or VERCEL_PROJECT_ID not configured."
+          fi
+
       - name: Checkout
+        if: steps.check.outputs.ready == 'true'
         uses: actions/checkout@v4
 
       - name: Set up Node.js
+        if: steps.check.outputs.ready == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: npm
 
       - name: Install dependencies
+        if: steps.check.outputs.ready == 'true'
         run: npm ci
 
-      - name: Pull Vercel project settings (preview)
+      - name: Pull Vercel project settings
+        if: steps.check.outputs.ready == 'true'
         run: npx vercel pull --yes --environment=preview --token=${{ secrets.VERCEL_TOKEN }}
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
-      - name: Build (preview)
+      - name: Build
+        if: steps.check.outputs.ready == 'true'
         run: npx vercel build --token=${{ secrets.VERCEL_TOKEN }}
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
-      - name: Deploy preview (prebuilt)
+      - name: Deploy preview
+        if: steps.check.outputs.ready == 'true'
         run: npx vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }}
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
