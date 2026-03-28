@@ -15,7 +15,7 @@ func TestBuildTokenExchangeParams_GrantType(t *testing.T) {
 
 	params := BuildTokenExchangeParams("test-refresh-token", "google-ads")
 
-	expected := "urn:auth0:params:oauth:grant-type:token-exchange"
+	expected := "urn:auth0:params:oauth:grant-type:token-exchange:federated-connection-access-token"
 	if got := params.Get("grant_type"); got != expected {
 		t.Errorf("grant_type = %q, want %q", got, expected)
 	}
