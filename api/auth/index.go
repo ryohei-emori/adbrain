@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,6 +12,108 @@ import (
 
 	"github.com/adbrain/adbrain/pkg/auth"
 )
+
+func Handler(w http.ResponseWriter, r *http.Request) {
+	action := r.URL.Query().Get("action")
+	switch action {
+	case "login":
+		handleLogin(w, r)
+	case "logout":
+		handleLogout(w, r)
+	case "me":
+		handleMe(w, r)
+	case "callback":
+		handleCallback(w, r)
+	default:
+		http.Error(w, `{"error":"unknown auth action"}`, http.StatusNotFound)
+	}
+}
+
+func handleLogin(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	domain := os.Getenv("AUTH0_DOMAIN")
+	clientID := os.Getenv("AUTH0_CLIENT_ID")
+	baseURL := getBaseURL()
+
+	stateBytes := make([]byte, 16)
+	if _, err := rand.Read(stateBytes); err != nil {
+		http.Error(w, `{"error":"failed to generate state"}`, http.StatusInternalServerError)
+		return
+	}
+	state := hex.EncodeToString(stateBytes)
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "oauth_state",
+		Value:    state,
+		Path:     "/",
+		MaxAge:   300,
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+	})
+
+	params := url.Values{
+		"response_type": {"code"},
+		"client_id":     {clientID},
+		"redirect_uri":  {baseURL + "/api/auth/callback"},
+		"scope":         {"openid email profile offline_access"},
+		"connection":    {"google-oauth2"},
+		"state":         {state},
+	}
+
+	authorizeURL := "https://" + domain + "/authorize?" + params.Encode()
+	http.Redirect(w, r, authorizeURL, http.StatusFound)
+}
+
+func handleLogout(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost && r.Method != http.MethodGet {
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	auth.DestroySession(w)
+
+	domain := os.Getenv("AUTH0_DOMAIN")
+	clientID := os.Getenv("AUTH0_CLIENT_ID")
+	baseURL := getBaseURL()
+
+	params := url.Values{
+		"client_id": {clientID},
+		"returnTo":  {baseURL},
+	}
+
+	logoutURL := "https://" + domain + "/v2/logout?" + params.Encode()
+	http.Redirect(w, r, logoutURL, http.StatusFound)
+}
+
+func handleMe(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	session, err := auth.GetSession(r)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "not authenticated",
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"user_id": session.UserID,
+		"email":   session.Email,
+		"name":    session.Name,
+		"picture": session.Picture,
+	})
+}
 
 type tokenResponse struct {
 	AccessToken  string `json:"access_token"`
@@ -26,7 +130,7 @@ type userInfoResponse struct {
 	Picture string `json:"picture"`
 }
 
-func Handler(w http.ResponseWriter, r *http.Request) {
+func handleCallback(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 		return
@@ -63,10 +167,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	domain := os.Getenv("AUTH0_DOMAIN")
 	clientID := os.Getenv("AUTH0_CLIENT_ID")
 	clientSecret := os.Getenv("AUTH0_CLIENT_SECRET")
-	baseURL := os.Getenv("BASE_URL")
-	if baseURL == "" {
-		baseURL = "https://adbrain.vercel.app"
-	}
+	baseURL := getBaseURL()
 
 	tokenParams := url.Values{
 		"grant_type":    {"authorization_code"},
@@ -125,7 +226,13 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// First-time users go to onboarding; returning users go to dashboard.
-	// For simplicity, redirect to dashboard. Frontend detects first login via connection status.
 	http.Redirect(w, r, baseURL+"/dashboard", http.StatusFound)
+}
+
+func getBaseURL() string {
+	baseURL := os.Getenv("BASE_URL")
+	if baseURL == "" {
+		baseURL = "https://adbrain.vercel.app"
+	}
+	return baseURL
 }
