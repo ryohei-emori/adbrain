@@ -105,7 +105,11 @@ jobs:
 
       - name: Deploy production
         if: steps.check.outputs.ready == 'true'
-        run: npx vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }} --yes
+        run: |
+          npx vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }} --yes \
+            --build-env VITE_AUTH0_DOMAIN=${{ secrets.VITE_AUTH0_DOMAIN }} \
+            --build-env VITE_AUTH0_CLIENT_ID=${{ secrets.VITE_AUTH0_CLIENT_ID }} \
+            --build-env VITE_AUTH0_AUDIENCE=${{ secrets.VITE_AUTH0_AUDIENCE }}
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
