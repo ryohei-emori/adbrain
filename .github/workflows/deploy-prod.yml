@@ -103,24 +103,13 @@ jobs:
         if: steps.check.outputs.ready == 'true'
         run: npm ci
 
-      - name: Pull Vercel project settings
-        if: steps.check.outputs.ready == 'true'
-        run: npx vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
-        env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-
       - name: Build
         if: steps.check.outputs.ready == 'true'
-        run: npx vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
-        env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-          NODE_VERSION: "20"
+        run: npm run build
 
       - name: Deploy production
         if: steps.check.outputs.ready == 'true'
-        run: npx vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
+        run: npx vercel deploy ./dist --prod --token=${{ secrets.VERCEL_TOKEN }}
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
