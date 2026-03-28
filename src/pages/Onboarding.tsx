@@ -26,8 +26,11 @@ export function Onboarding() {
 
   const handleConnect = async (provider: "google-ads" | "meta-ads" | "tiktok-ads") => {
     setConnecting(provider);
-    await connect(provider);
-    setConnecting(null);
+    try {
+      await connect(provider);
+    } finally {
+      setConnecting(null);
+    }
   };
 
   const handleFinish = () => {
