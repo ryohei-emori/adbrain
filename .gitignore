@@ -1,0 +1,31 @@
+node_modules/
+dist/
+.vercel/
+*.local
+.env
+.env.local
+.env.*.local
+
+# Terraform
+infra/.terraform/
+infra/*.tfstate
+infra/*.tfstate.backup
+infra/*.tfvars
+infra/envs/*.tfvars
+!infra/envs/*.tfvars.example
+
+# Go
+api/vendor/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test
+coverage/

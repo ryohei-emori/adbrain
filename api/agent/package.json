@@ -1,0 +1,18 @@
+{
+  "name": "@adbrain/agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@langchain/core": "^1.1.33",
+    "@langchain/google-genai": "^2.1.26",
+    "@langchain/langgraph": "^1.2.6",
+    "@langchain/xai": "^1.3.11",
+    "@vercel/kv": "^3.0.0",
+    "@vercel/node": "^3.2.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}

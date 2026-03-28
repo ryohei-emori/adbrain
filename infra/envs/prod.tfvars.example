@@ -1,0 +1,30 @@
+# Production — copy to prod.tfvars (gitignored) for local applies.
+# GitHub Actions: inject sensitive values with TF_VAR_* (see deploy-prod.yml).
+
+environment    = "prod"
+vercel_domain  = "adbrain.vercel.app"
+github_repo    = "your-github-org/adbrain"
+auth0_domain   = "your-tenant-prod.us.auth0.com"
+auth0_audience = "https://api.adbrain"
+
+auth0_client_id     = "tf-mgmt-client-id"
+auth0_client_secret = "tf-mgmt-client-secret"
+
+vercel_api_token = "vercel-api-token"
+vercel_team_id   = ""
+
+google_oauth_client_id     = "google-console-web-client-id"
+google_oauth_client_secret = "google-console-web-client-secret"
+
+google_ads_client_id         = "google-ads-oauth-client-id"
+google_ads_client_secret     = "google-ads-oauth-client-secret"
+google_ads_developer_token   = "google-ads-developer-token"
+
+meta_app_id     = "meta-app-id"
+meta_app_secret = "meta-app-secret"
+
+xai_api_key       = "xai-api-key"
+google_ai_api_key = "google-ai-api-key"
+
+session_secret           = "generate-a-long-random-string"
+auth0_log_stream_token   = "generate-a-long-random-bearer-secret"

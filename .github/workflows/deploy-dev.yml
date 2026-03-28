@@ -1,0 +1,98 @@
+name: Deploy Development
+
+on:
+  push:
+    branches:
+      - development
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: CI
+    uses: ./.github/workflows/ci.yml
+
+  terraform-dev:
+    name: Terraform apply (dev)
+    needs: test
+    runs-on: ubuntu-latest
+    environment: development
+    env:
+      TF_TOKEN_app_terraform_io: ${{ secrets.TF_API_TOKEN }}
+      TF_VAR_auth0_domain: ${{ secrets.AUTH0_DEV_DOMAIN }}
+      TF_VAR_auth0_client_id: ${{ secrets.AUTH0_DEV_TF_CLIENT_ID }}
+      TF_VAR_auth0_client_secret: ${{ secrets.AUTH0_DEV_TF_CLIENT_SECRET }}
+      TF_VAR_vercel_api_token: ${{ secrets.VERCEL_TOKEN }}
+      TF_VAR_github_repo: ${{ github.repository }}
+      TF_VAR_vercel_team_id: ${{ vars.VERCEL_TEAM_ID }}
+      TF_VAR_auth0_audience: ${{ secrets.AUTH0_AUDIENCE_DEV }}
+      TF_VAR_google_oauth_client_id: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+      TF_VAR_google_oauth_client_secret: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+      TF_VAR_google_ads_client_id: ${{ secrets.GOOGLE_ADS_CLIENT_ID }}
+      TF_VAR_google_ads_client_secret: ${{ secrets.GOOGLE_ADS_CLIENT_SECRET }}
+      TF_VAR_google_ads_developer_token: ${{ secrets.GOOGLE_ADS_DEVELOPER_TOKEN }}
+      TF_VAR_meta_app_id: ${{ secrets.META_APP_ID }}
+      TF_VAR_meta_app_secret: ${{ secrets.META_APP_SECRET }}
+      TF_VAR_xai_api_key: ${{ secrets.XAI_API_KEY }}
+      TF_VAR_google_ai_api_key: ${{ secrets.GOOGLE_AI_API_KEY }}
+      TF_VAR_session_secret: ${{ secrets.SESSION_SECRET_DEV }}
+      TF_VAR_auth0_log_stream_token: ${{ secrets.AUTH0_LOG_STREAM_TOKEN_DEV }}
+      TF_VAR_vercel_domain: ${{ secrets.VERCEL_DOMAIN_DEV }}
+      TF_VAR_environment: dev
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+
+      - name: Terraform init
+        working-directory: infra
+        run: terraform init -input=false
+
+      - name: Prepare dev.tfvars
+        working-directory: infra
+        run: cp envs/dev.tfvars.example envs/dev.tfvars
+
+      - name: Terraform apply
+        working-directory: infra
+        run: terraform apply -auto-approve -var-file=envs/dev.tfvars
+
+  deploy-dev:
+    name: Vercel preview deploy
+    needs: terraform-dev
+    runs-on: ubuntu-latest
+    environment: development
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Pull Vercel project settings (preview)
+        run: npx vercel pull --yes --environment=preview --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: Build (preview)
+        run: npx vercel build --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: Deploy preview (prebuilt)
+        run: npx vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
