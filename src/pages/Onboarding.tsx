@@ -213,7 +213,7 @@ export function Onboarding() {
                 onClick={handleFinish}
                 className="rounded-lg bg-brand-primary px-6 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
               >
-                Start Optimizing \u2192
+                {"Start Optimizing \u2192"}
               </button>
             )}
           </div>

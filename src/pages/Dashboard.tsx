@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Link2 } from "lucide-react";
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { PerformanceChart } from "@/components/dashboard/PerformanceChart";
 import { ProposalCard } from "@/components/proposals/ProposalCard";
@@ -8,15 +8,21 @@ import { StepUpDialog } from "@/components/auth/StepUpDialog";
 import { useProposals } from "@/hooks/useProposals";
 import { useMetrics } from "@/hooks/useMetrics";
 import { useStepUp } from "@/hooks/useStepUp";
+import { useConnections } from "@/hooks/useConnections";
 import { useToast } from "@/components/shared/Toast";
 
 export function Dashboard() {
   const { allProposals, approve, reject, isLoading } = useProposals();
   const { metrics, source } = useMetrics();
+  const { connections } = useConnections();
   const stepUp = useStepUp();
   const { toast } = useToast();
   const [pendingStepUpId, setPendingStepUpId] = useState<string | null>(null);
 
+  const connectedCount = connections.filter(
+    (c) => c.status === "connected" && c.provider !== "tiktok-ads",
+  ).length;
+  const hasConnections = connectedCount > 0;
   const pendingProposals = allProposals.filter((p) => p.status === "pending");
 
   const handleApprove = async (id: string) => {
@@ -51,13 +57,37 @@ export function Dashboard() {
           <h1 className="text-xl font-semibold tracking-tight">Dashboard</h1>
           <p className="text-sm text-zinc-500 mt-1">Your ad performance at a glance</p>
         </div>
-        {source === "live" && (
+        {source === "live" ? (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-green-900/30 px-2.5 py-1 text-xs font-medium text-green-400">
             <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
             Live data via Token Vault
           </span>
+        ) : (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-800 px-2.5 py-1 text-xs font-medium text-zinc-400">
+            Sample data
+          </span>
         )}
       </div>
+
+      {!hasConnections && (
+        <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 flex items-center gap-4">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-500/10">
+            <Link2 className="h-5 w-5 text-amber-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-amber-300">No ad accounts connected</p>
+            <p className="text-xs text-zinc-400 mt-0.5">
+              Connect Google Ads or Meta Ads to see live metrics and enable AI optimization.
+            </p>
+          </div>
+          <Link
+            to="/dashboard/connections"
+            className="shrink-0 rounded-lg bg-amber-500/20 px-3 py-1.5 text-xs font-medium text-amber-300 hover:bg-amber-500/30 transition-colors"
+          >
+            Connect
+          </Link>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard
@@ -99,6 +129,11 @@ export function Dashboard() {
             {pendingProposals.length > 0 && (
               <span className="ml-2 text-xs font-normal text-zinc-500">
                 ({pendingProposals.length} pending)
+              </span>
+            )}
+            {!hasConnections && (
+              <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500 font-normal">
+                Sample
               </span>
             )}
           </h2>

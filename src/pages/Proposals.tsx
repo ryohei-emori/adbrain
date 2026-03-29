@@ -1,10 +1,12 @@
 import { useState } from "react";
-import { FileText } from "lucide-react";
+import { Link } from "react-router-dom";
+import { FileText, Link2 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { ProposalCard } from "@/components/proposals/ProposalCard";
 import { StepUpDialog } from "@/components/auth/StepUpDialog";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { useProposals, type ProposalFilter } from "@/hooks/useProposals";
+import { useConnections } from "@/hooks/useConnections";
 import { useStepUp } from "@/hooks/useStepUp";
 import { useToast } from "@/components/shared/Toast";
 
@@ -18,9 +20,14 @@ const TABS: { value: ProposalFilter; label: string }[] = [
 export function Proposals() {
   const { proposals, allProposals, filter, setFilter, approve, reject, isLoading } =
     useProposals();
+  const { connections } = useConnections();
   const stepUp = useStepUp();
   const { toast } = useToast();
   const [pendingStepUpId, setPendingStepUpId] = useState<string | null>(null);
+
+  const hasConnections = connections.some(
+    (c) => c.status === "connected" && c.provider !== "tiktok-ads",
+  );
 
   const counts: Record<ProposalFilter, number> = {
     all: allProposals.length,
@@ -53,6 +60,32 @@ export function Proposals() {
     }
     return ok;
   };
+
+  if (!hasConnections) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">Proposals</h1>
+          <p className="text-sm text-zinc-500 mt-1">
+            AI-generated optimization proposals for your campaigns
+          </p>
+        </div>
+        <EmptyState
+          icon={Link2}
+          title="Connect an ad account first"
+          description="The AI agent needs access to your campaign data to generate optimization proposals. Connect Google Ads or Meta Ads to get started."
+          action={
+            <Link
+              to="/dashboard/connections"
+              className="rounded-lg bg-brand-primary px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+            >
+              Go to Connections
+            </Link>
+          }
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

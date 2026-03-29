@@ -11,10 +11,11 @@ import {
   ChevronRight,
   Menu,
   X,
+  Check,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { MOCK_LLM_USAGE } from "@/lib/mock-data";
 import { useAuth } from "@/hooks/useAuth";
+import { useConnections } from "@/hooks/useConnections";
 import { MobileNav } from "./MobileNav";
 
 const NAV_ITEMS = [
@@ -29,6 +30,10 @@ export function AppShell() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const { user, logout } = useAuth();
+  const { connections } = useConnections();
+  const connectedPlatforms = connections
+    .filter((c) => c.status === "connected" && c.provider !== "tiktok-ads")
+    .map((c) => c.displayName);
 
   return (
     <div className="flex h-dvh overflow-hidden bg-zinc-950">
@@ -78,16 +83,34 @@ export function AppShell() {
 
         <div className="mt-auto border-t border-zinc-800 p-3">
           {!collapsed ? (
-            <div className="flex items-center gap-2 rounded-lg bg-zinc-900 px-3 py-2">
-              <Bot className="h-4 w-4 text-brand-primary shrink-0" />
-              <div className="min-w-0">
-                <p className="text-xs text-zinc-400">LLM Cost Today</p>
-                <p className="text-sm font-mono font-medium">${MOCK_LLM_USAGE.costToday.toFixed(2)}</p>
-              </div>
+            <div className="rounded-lg bg-zinc-900 px-3 py-2">
+              {connectedPlatforms.length > 0 ? (
+                <div className="space-y-1">
+                  <p className="text-xs text-zinc-500">Connected</p>
+                  {connectedPlatforms.map((name) => (
+                    <div key={name} className="flex items-center gap-1.5">
+                      <Check className="h-3 w-3 text-green-400 shrink-0" />
+                      <span className="text-xs text-zinc-300">{name}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Link2 className="h-4 w-4 text-amber-400 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-xs text-amber-400">No accounts</p>
+                    <p className="text-[10px] text-zinc-500">Connect to start</p>
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="flex justify-center">
-              <Bot className="h-4 w-4 text-brand-primary" />
+              {connectedPlatforms.length > 0 ? (
+                <Check className="h-4 w-4 text-green-400" />
+              ) : (
+                <Link2 className="h-4 w-4 text-amber-400" />
+              )}
             </div>
           )}
         </div>
