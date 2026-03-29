@@ -145,27 +145,46 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 	errParam := r.URL.Query().Get("error")
 	baseURL := getBaseURL()
 
-	// Detect Connect flow via connect_state cookie (Auth0 rewrites state param)
-	connectCookie, connectCookieErr := r.Cookie("connect_state")
-	isConnectFlow := connectCookieErr == nil && connectCookie.Value != ""
+	log.Printf("[callback] state=%q, code_present=%v, error=%q", state, code != "", errParam)
+
+	// Detect Connect flow: try state prefix first, then cookie
+	isConnectFlow := false
 	var connectProvider string
-	if isConnectFlow {
-		cookieParts := strings.SplitN(connectCookie.Value, "|", 3)
-		// Cookie format: "connect:<provider>:<nonce>|<userID>|<returnTo>"
-		stateParts := strings.SplitN(cookieParts[0], ":", 3)
-		if len(stateParts) >= 2 {
-			connectProvider = stateParts[1]
+	var connectCookie *http.Cookie
+
+	if strings.HasPrefix(state, "connect:") {
+		isConnectFlow = true
+		parts := strings.SplitN(state, ":", 3)
+		if len(parts) >= 2 {
+			connectProvider = parts[1]
 		}
-		log.Printf("[callback] Connect flow detected via cookie: provider=%s", connectProvider)
+		log.Printf("[callback] Connect flow detected via state param: provider=%s", connectProvider)
+	}
+
+	if c, err := r.Cookie("connect_state"); err == nil && c.Value != "" {
+		connectCookie = c
+		if !isConnectFlow {
+			isConnectFlow = true
+			cookieParts := strings.SplitN(c.Value, "|", 3)
+			stateParts := strings.SplitN(cookieParts[0], ":", 3)
+			if len(stateParts) >= 2 {
+				connectProvider = stateParts[1]
+			}
+			log.Printf("[callback] Connect flow detected via cookie fallback: provider=%s", connectProvider)
+		}
+	} else {
+		log.Printf("[callback] No connect_state cookie: err=%v", err)
 	}
 
 	if errParam != "" {
 		desc := r.URL.Query().Get("error_description")
 		if isConnectFlow {
 			connectReturnTo := "/dashboard/connections"
-			parts := strings.SplitN(connectCookie.Value, "|", 3)
-			if len(parts) >= 3 {
-				connectReturnTo = parts[2]
+			if connectCookie != nil {
+				parts := strings.SplitN(connectCookie.Value, "|", 3)
+				if len(parts) >= 3 {
+					connectReturnTo = parts[2]
+				}
 			}
 			sep := "?"
 			if strings.Contains(connectReturnTo, "?") {
@@ -178,13 +197,10 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// State validation: for connect flow we skip state check (Auth0 rewrites it);
-	// for normal login flow we validate oauth_state cookie.
 	if !isConnectFlow {
 		stateCookie, err := r.Cookie("oauth_state")
 		if err != nil || stateCookie.Value != state {
-			// Also not a login flow — silently treat as landing redirect
-			log.Printf("[callback] No valid oauth_state or connect_state, redirecting to landing")
+			log.Printf("[callback] No valid oauth_state or connect_state, redirecting to landing. oauth_state_err=%v", err)
 			http.Redirect(w, r, baseURL+"/", http.StatusFound)
 			return
 		}
@@ -277,13 +293,16 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 	if isConnectFlow && connectProvider != "" {
 		returnTo := "/dashboard/connections"
 		originalUserID := userInfo.Sub
-		parts := strings.SplitN(connectCookie.Value, "|", 3)
-		if len(parts) >= 2 && parts[1] != "" {
-			originalUserID = parts[1]
+		if connectCookie != nil {
+			parts := strings.SplitN(connectCookie.Value, "|", 3)
+			if len(parts) >= 2 && parts[1] != "" {
+				originalUserID = parts[1]
+			}
+			if len(parts) >= 3 {
+				returnTo = parts[2]
+			}
 		}
-		if len(parts) >= 3 {
-			returnTo = parts[2]
-		}
+		log.Printf("[callback] Connect callback: provider=%s userID=%s returnTo=%s", connectProvider, originalUserID, returnTo)
 		handleConnectCallback(w, r, originalUserID, connectProvider, tokens.AccessToken, baseURL, returnTo)
 		return
 	}
