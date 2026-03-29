@@ -86,13 +86,20 @@ var connectionScopes = map[string][]string{
 	"meta-ads":   {"ads_management", "ads_read", "email"},
 }
 
-// handleInitiate builds the OAuth authorize URL.
-// For google-ads: redirects through Auth0 with connection=google-ads (real OAuth).
-// For meta-ads: returns 503 if no credentials are configured (frontend uses demo mode).
+// handleInitiate supports two modes:
+//   - GET with ?mode=redirect: browser navigation, responds with 302 redirect (sets cookies reliably)
+//   - POST (legacy): returns JSON with connect_uri
 func handleInitiate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost && r.Method != http.MethodGet {
 		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 		return
+	}
+
+	// Accept Bearer token from query param for GET redirects (browser navigation can't set headers)
+	if r.Method == http.MethodGet {
+		if token := r.URL.Query().Get("token"); token != "" {
+			r.Header.Set("Authorization", "Bearer "+token)
+		}
 	}
 
 	session, err := auth.GetSession(r)
@@ -112,9 +119,11 @@ func handleInitiate(w http.ResponseWriter, r *http.Request) {
 		returnTo = "/dashboard/connections"
 	}
 
+	useRedirect := r.URL.Query().Get("mode") == "redirect"
+
 	switch provider {
 	case "google-ads":
-		handleGoogleAdsInitiate(w, session, returnTo)
+		handleGoogleAdsInitiate(w, r, session, returnTo, useRedirect)
 	case "meta-ads":
 		handleMetaAdsInitiate(w, session)
 	default:
@@ -125,7 +134,7 @@ func handleInitiate(w http.ResponseWriter, r *http.Request) {
 // handleGoogleAdsInitiate tries two approaches:
 // 1. Auth0 Connected Accounts API (Token Vault) — requires refresh token
 // 2. Auth0 /authorize redirect with connection=google-ads — fallback
-func handleGoogleAdsInitiate(w http.ResponseWriter, session *auth.Session, returnTo string) {
+func handleGoogleAdsInitiate(w http.ResponseWriter, r *http.Request, session *auth.Session, returnTo string, useRedirect bool) {
 	domain := os.Getenv("AUTH0_DOMAIN")
 	clientID := os.Getenv("AUTH0_CLIENT_ID")
 	baseURL := getBaseURL()
@@ -134,56 +143,6 @@ func handleGoogleAdsInitiate(w http.ResponseWriter, session *auth.Session, retur
 		http.Error(w, `{"error":"Auth0 not configured"}`, http.StatusServiceUnavailable)
 		return
 	}
-
-	// Strategy 1: Connected Accounts API (Token Vault)
-	if session.RefreshToken != "" {
-		myToken, err := auth.GetMyAccountAPIToken(session.RefreshToken)
-		if err == nil {
-			stateBytes := make([]byte, 16)
-			rand.Read(stateBytes)
-			state := hex.EncodeToString(stateBytes)
-
-			redirectURI := baseURL + "/dashboard/connections?connect_callback=1"
-			scopes := connectionScopes["google-ads"]
-			result, err := auth.InitiateConnectedAccount(myToken, "google-ads", redirectURI, state, scopes)
-			if err == nil && result.ConnectURI != "" {
-				http.SetCookie(w, &http.Cookie{
-					Name:     "connect_auth_session",
-					Value:    result.AuthSession,
-					Path:     "/",
-					MaxAge:   600,
-					HttpOnly: true,
-					Secure:   true,
-					SameSite: http.SameSiteLaxMode,
-				})
-				http.SetCookie(w, &http.Cookie{
-					Name:     "connect_provider",
-					Value:    "google-ads",
-					Path:     "/",
-					MaxAge:   600,
-					HttpOnly: true,
-					Secure:   true,
-					SameSite: http.SameSiteLaxMode,
-				})
-
-				log.Printf("Connected Accounts API succeeded for google-ads")
-				w.Header().Set("Content-Type", "application/json")
-				json.NewEncoder(w).Encode(map[string]string{
-					"connect_uri": result.ConnectURI,
-					"state":       state,
-				})
-				return
-			}
-			log.Printf("Connected Accounts initiate failed: %v", err)
-		} else {
-			log.Printf("My Account API token failed: %v", err)
-		}
-	} else {
-		log.Printf("No refresh token in session, skipping Connected Accounts API")
-	}
-
-	// Strategy 2: Auth0 /authorize redirect with connection=google-ads
-	log.Printf("Falling back to Auth0 /authorize redirect for google-ads")
 
 	stateBytes := make([]byte, 16)
 	if _, err := rand.Read(stateBytes); err != nil {
@@ -214,6 +173,12 @@ func handleGoogleAdsInitiate(w http.ResponseWriter, session *auth.Session, retur
 	}
 
 	connectURI := "https://" + domain + "/authorize?" + params.Encode()
+	log.Printf("[initiate] provider=google-ads userID=%s returnTo=%s redirect=%v", session.UserID, returnTo, useRedirect)
+
+	if useRedirect {
+		http.Redirect(w, r, connectURI, http.StatusFound)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
