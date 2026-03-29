@@ -33,20 +33,29 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	provider := ""
 
 	if cookie, err := r.Cookie("connect_state"); err == nil && cookie.Value != "" {
-		parts := strings.SplitN(cookie.Value, "|", 3)
-		stateParts := strings.SplitN(parts[0], ":", 3)
-		if len(stateParts) >= 2 {
-			provider = stateParts[1]
+		decoded, decErr := url.QueryUnescape(cookie.Value)
+		if decErr != nil {
+			decoded = cookie.Value
 		}
-		if len(parts) >= 2 {
-			userID = parts[1]
+		var cookieData struct {
+			State    string `json:"state"`
+			UserID   string `json:"user_id"`
+			ReturnTo string `json:"return_to"`
+			Provider string `json:"provider"`
 		}
-		if len(parts) >= 3 {
-			returnTo = parts[2]
+		if json.Unmarshal([]byte(decoded), &cookieData) == nil {
+			if cookieData.UserID != "" {
+				userID = cookieData.UserID
+			}
+			if cookieData.ReturnTo != "" {
+				returnTo = cookieData.ReturnTo
+			}
+			if cookieData.Provider != "" {
+				provider = cookieData.Provider
+			}
 		}
-		log.Printf("[connectcb] cookie: provider=%s userID=%s returnTo=%s", provider, userID, returnTo)
+		log.Printf("[connectcb] cookie parsed: provider=%s userID=%s returnTo=%s", provider, userID, returnTo)
 	} else {
-		// Fallback: extract provider from state prefix
 		if strings.HasPrefix(state, "connect:") {
 			sp := strings.SplitN(state, ":", 3)
 			if len(sp) >= 2 {

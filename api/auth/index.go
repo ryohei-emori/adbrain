@@ -167,11 +167,7 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 			}
 		} else if connectCookie != nil {
 			isConnectFlow = true
-			cookieParts := strings.SplitN(connectCookie.Value, "|", 3)
-			stateParts := strings.SplitN(cookieParts[0], ":", 3)
-			if len(stateParts) >= 2 {
-				connectProvider = stateParts[1]
-			}
+			connectProvider = parseConnectCookieProvider(connectCookie.Value)
 		}
 	}
 
@@ -183,10 +179,7 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 		if isConnectFlow {
 			connectReturnTo := "/dashboard/connections"
 			if connectCookie != nil {
-				parts := strings.SplitN(connectCookie.Value, "|", 3)
-				if len(parts) >= 3 {
-					connectReturnTo = parts[2]
-				}
+				connectReturnTo = parseConnectCookieReturnTo(connectCookie.Value, connectReturnTo)
 			}
 			sep := "?"
 			if strings.Contains(connectReturnTo, "?") {
@@ -302,12 +295,12 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 		returnTo := "/dashboard/connections"
 		originalUserID := userInfo.Sub
 		if connectCookie != nil {
-			parts := strings.SplitN(connectCookie.Value, "|", 3)
-			if len(parts) >= 2 && parts[1] != "" {
-				originalUserID = parts[1]
+			cd := parseConnectCookie(connectCookie.Value)
+			if cd.UserID != "" {
+				originalUserID = cd.UserID
 			}
-			if len(parts) >= 3 {
-				returnTo = parts[2]
+			if cd.ReturnTo != "" {
+				returnTo = cd.ReturnTo
 			}
 		}
 		log.Printf("[callback] Connect callback: provider=%s userID=%s returnTo=%s", connectProvider, originalUserID, returnTo)
@@ -389,16 +382,43 @@ func handleConnectCallback(w http.ResponseWriter, r *http.Request, userID, provi
 func connectErrorRedirect(w http.ResponseWriter, r *http.Request, baseURL, errMsg string) {
 	returnTo := "/dashboard/connections"
 	if cookie, err := r.Cookie("connect_state"); err == nil {
-		parts := strings.SplitN(cookie.Value, "|", 3)
-		if len(parts) >= 3 {
-			returnTo = parts[2]
-		}
+		returnTo = parseConnectCookieReturnTo(cookie.Value, returnTo)
 	}
 	sep := "?"
 	if strings.Contains(returnTo, "?") {
 		sep = "&"
 	}
 	http.Redirect(w, r, baseURL+returnTo+sep+"connect_error="+url.QueryEscape(errMsg), http.StatusFound)
+}
+
+type connectCookieData struct {
+	State    string `json:"state"`
+	UserID   string `json:"user_id"`
+	ReturnTo string `json:"return_to"`
+	Provider string `json:"provider"`
+}
+
+func parseConnectCookie(raw string) connectCookieData {
+	decoded, err := url.QueryUnescape(raw)
+	if err != nil {
+		decoded = raw
+	}
+	var cd connectCookieData
+	json.Unmarshal([]byte(decoded), &cd)
+	return cd
+}
+
+func parseConnectCookieProvider(raw string) string {
+	cd := parseConnectCookie(raw)
+	return cd.Provider
+}
+
+func parseConnectCookieReturnTo(raw, fallback string) string {
+	cd := parseConnectCookie(raw)
+	if cd.ReturnTo != "" {
+		return cd.ReturnTo
+	}
+	return fallback
 }
 
 func getBaseURL() string {

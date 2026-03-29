@@ -152,9 +152,16 @@ func handleGoogleAdsInitiate(w http.ResponseWriter, r *http.Request, session *au
 	nonce := hex.EncodeToString(stateBytes)
 	state := "connect:google-ads:" + nonce
 
+	cookiePayload := map[string]string{
+		"state":     state,
+		"user_id":   session.UserID,
+		"return_to": returnTo,
+		"provider":  "google-ads",
+	}
+	cookieJSON, _ := json.Marshal(cookiePayload)
 	http.SetCookie(w, &http.Cookie{
 		Name:     "connect_state",
-		Value:    state + "|" + session.UserID + "|" + returnTo,
+		Value:    url.QueryEscape(string(cookieJSON)),
 		Path:     "/",
 		MaxAge:   600,
 		HttpOnly: true,
