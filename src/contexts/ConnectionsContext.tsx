@@ -93,9 +93,14 @@ export function ConnectionsProvider({ children }: { children: ReactNode }) {
     const headers = new Headers(init?.headers);
     try {
       const token = await getTokenRef.current();
-      if (token) headers.set("Authorization", `Bearer ${token}`);
-    } catch {
-      // Token unavailable — continue without
+      if (token) {
+        headers.set("Authorization", `Bearer ${token}`);
+        console.log("[authFetch] Bearer token attached, length:", token.length);
+      } else {
+        console.warn("[authFetch] getAccessTokenSilently returned falsy");
+      }
+    } catch (e) {
+      console.warn("[authFetch] getAccessTokenSilently failed:", e);
     }
     return fetch(url, { ...init, headers, credentials: "include" });
   }, []);
