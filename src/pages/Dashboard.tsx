@@ -23,9 +23,10 @@ export function Dashboard() {
   const connectedParam = searchParams.get("connected");
   useEffect(() => {
     if (connectedParam) {
-      refreshConnections();
-      toast("success", "Connected!", `${connectedParam} has been connected successfully.`);
       setSearchParams({}, { replace: true });
+      refreshConnections().then(() => {
+        toast("success", "Connected!", `${connectedParam} has been connected successfully.`);
+      });
     }
   }, [connectedParam, refreshConnections, toast, setSearchParams]);
 

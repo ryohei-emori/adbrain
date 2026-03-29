@@ -26,10 +26,11 @@ export function Onboarding() {
 
   useEffect(() => {
     if (connectedParam) {
-      refresh();
-      toast("success", "Connected!", `${connectedParam} has been connected successfully.`);
       setSearchParams({}, { replace: true });
-      setStep(1);
+      refresh().then(() => {
+        toast("success", "Connected!", `${connectedParam} has been connected successfully.`);
+        setStep(1);
+      });
     }
   }, [connectedParam, refresh, toast, setSearchParams]);
 

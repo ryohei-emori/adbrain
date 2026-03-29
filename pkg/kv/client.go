@@ -28,6 +28,14 @@ func New() (*Client, error) {
 	}, nil
 }
 
+func (c *Client) doRaw(method, path string, body []byte) ([]byte, error) {
+	var reqBody io.Reader
+	if body != nil {
+		reqBody = bytes.NewReader(body)
+	}
+	return c.doRequest(method, path, reqBody)
+}
+
 func (c *Client) do(method, path string, body interface{}) ([]byte, error) {
 	var reqBody io.Reader
 	if body != nil {
@@ -37,7 +45,10 @@ func (c *Client) do(method, path string, body interface{}) ([]byte, error) {
 		}
 		reqBody = bytes.NewReader(data)
 	}
+	return c.doRequest(method, path, reqBody)
+}
 
+func (c *Client) doRequest(method, path string, reqBody io.Reader) ([]byte, error) {
 	req, err := http.NewRequest(method, c.baseURL+path, reqBody)
 	if err != nil {
 		return nil, err
@@ -92,12 +103,12 @@ func (c *Client) Get(key string) (string, error) {
 }
 
 func (c *Client) Set(key, value string) error {
-	_, err := c.do("POST", "/set/"+key, value)
+	_, err := c.doRaw("POST", "/set/"+key, []byte(value))
 	return err
 }
 
 func (c *Client) SetWithTTL(key, value string, ttlSeconds int) error {
-	_, err := c.do("POST", fmt.Sprintf("/set/%s?EX=%d", key, ttlSeconds), value)
+	_, err := c.doRaw("POST", fmt.Sprintf("/set/%s?EX=%d", key, ttlSeconds), []byte(value))
 	return err
 }
 

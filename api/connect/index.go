@@ -56,8 +56,10 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 		{Provider: "meta-ads", Connected: false, TokenStatus: "disconnected"},
 	}
 
+	source := "default"
 	kvClient, err := kv.New()
 	if err == nil {
+		source = "kv"
 		for i, s := range statuses {
 			val, kvErr := kvClient.Get("connection:" + session.UserID + ":" + s.Provider)
 			if kvErr == nil && val != "" {
@@ -67,13 +69,15 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
+	} else {
+		log.Printf("KV unavailable for status check: %v", err)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"user_id":     session.UserID,
 		"connections": statuses,
-		"source":      "kv_cache",
+		"source":      source,
 	})
 }
 

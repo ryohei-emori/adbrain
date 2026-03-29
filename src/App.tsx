@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import { ToastProvider } from "./components/shared/Toast";
+import { ConnectionsProvider } from "./contexts/ConnectionsContext";
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import { AppShell } from "./components/layout/AppShell";
 import { Landing } from "./pages/Landing";
@@ -13,6 +14,7 @@ import { Onboarding } from "./pages/Onboarding";
 export function App() {
   return (
     <ToastProvider>
+    <ConnectionsProvider>
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
@@ -32,6 +34,7 @@ export function App() {
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+    </ConnectionsProvider>
     </ToastProvider>
   );
 }

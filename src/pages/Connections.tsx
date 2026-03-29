@@ -20,9 +20,10 @@ export function Connections() {
 
   useEffect(() => {
     if (connectedParam) {
-      refresh();
-      toast("success", "Account connected", `${connectedParam} has been connected successfully.`);
       setSearchParams({}, { replace: true });
+      refresh().then(() => {
+        toast("success", "Account connected", `${connectedParam} has been connected successfully.`);
+      });
     }
   }, [connectedParam, refresh, toast, setSearchParams]);
 

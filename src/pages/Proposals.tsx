@@ -38,12 +38,13 @@ export function Proposals() {
 
   useEffect(() => {
     if (connectedParam) {
-      refreshConnections();
-      toast("success", "Connected!", `${connectedParam} has been connected successfully.`);
       setSearchParams({}, { replace: true });
       setGenerating(true);
-      refreshProposals().finally(() => {
-        setTimeout(() => setGenerating(false), 2000);
+      refreshConnections().then(() => {
+        toast("success", "Connected!", `${connectedParam} has been connected successfully.`);
+        refreshProposals().finally(() => {
+          setTimeout(() => setGenerating(false), 2000);
+        });
       });
     }
   }, [connectedParam, refreshConnections, refreshProposals, toast, setSearchParams]);
