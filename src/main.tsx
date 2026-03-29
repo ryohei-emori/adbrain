@@ -1,12 +1,17 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
-import { Auth0Provider } from "@auth0/auth0-react";
+import { Auth0Provider, type AppState } from "@auth0/auth0-react";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/react";
 import { App } from "./App";
 import { auth0Config, isAuth0Configured } from "./lib/auth0";
 import "./index.css";
+
+function onRedirectCallback(appState?: AppState) {
+  const returnTo = appState?.returnTo || "/dashboard";
+  window.history.replaceState({}, document.title, returnTo);
+}
 
 function Root() {
   const app = (
@@ -26,6 +31,7 @@ function Root() {
       authorizationParams={auth0Config.authorizationParams}
       useRefreshTokens={auth0Config.useRefreshTokens}
       cacheLocation={auth0Config.cacheLocation}
+      onRedirectCallback={onRedirectCallback}
     >
       {app}
     </Auth0Provider>

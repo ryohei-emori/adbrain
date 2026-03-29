@@ -19,11 +19,15 @@ interface AuthUser {
   picture: string;
 }
 
+interface LoginOptions {
+  appState?: { returnTo?: string };
+}
+
 interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
   user: AuthUser | null;
-  loginWithRedirect: () => void;
+  loginWithRedirect: (opts?: LoginOptions) => void;
   logout: () => void;
   getAccessTokenSilently: () => Promise<string>;
 }
@@ -77,7 +81,8 @@ function useRealAuth(): AuthState {
             picture: auth0.user.picture ?? "",
           }
         : null,
-      loginWithRedirect: () => auth0.loginWithRedirect(),
+      loginWithRedirect: (opts?: LoginOptions) =>
+        auth0.loginWithRedirect({ appState: opts?.appState }),
       logout: () => auth0.logout({ logoutParams: { returnTo: window.location.origin } }),
       getAccessTokenSilently: () => auth0.getAccessTokenSilently(),
     }),
