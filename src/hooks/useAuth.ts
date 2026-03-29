@@ -1,16 +1,6 @@
 import { useState, useCallback, useMemo } from "react";
+import { useAuth0 as useAuth0Sdk } from "@auth0/auth0-react";
 import { isAuth0Configured } from "@/lib/auth0";
-
-let useAuth0Hook: (() => ReturnType<typeof import("@auth0/auth0-react").useAuth0>) | null = null;
-
-try {
-  if (isAuth0Configured) {
-    const mod = await import("@auth0/auth0-react");
-    useAuth0Hook = mod.useAuth0;
-  }
-} catch {
-  // Auth0 not available
-}
 
 interface AuthUser {
   sub: string;
@@ -68,7 +58,7 @@ function useMockAuth(): AuthState {
 }
 
 function useRealAuth(): AuthState {
-  const auth0 = useAuth0Hook!()!;
+  const auth0 = useAuth0Sdk();
   return useMemo(
     () => ({
       isAuthenticated: auth0.isAuthenticated,
@@ -91,7 +81,7 @@ function useRealAuth(): AuthState {
 }
 
 export function useAuth(): AuthState {
-  if (isAuth0Configured && useAuth0Hook) {
+  if (isAuth0Configured) {
     // eslint-disable-next-line react-hooks/rules-of-hooks
     return useRealAuth();
   }
