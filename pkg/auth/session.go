@@ -8,8 +8,10 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -136,20 +138,31 @@ func GetSession(r *http.Request) (*Session, error) {
 		}
 	}
 
-	// Strategy 2: Auth0 Bearer token → call /userinfo
+	// Strategy 2: Auth0 Bearer token
 	authHeader := r.Header.Get("Authorization")
 	if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
 		token := authHeader[7:]
 		session, err := resolveAuth0Token(token)
-		if err == nil {
+		if err != nil {
+			log.Printf("[GetSession] Bearer token resolve failed: %v (token length: %d)", err, len(token))
+		} else {
+			log.Printf("[GetSession] Bearer token resolved: userID=%s", session.UserID)
 			return session, nil
 		}
+	} else {
+		log.Printf("[GetSession] No Bearer header found (auth header length: %d)", len(authHeader))
 	}
 
 	return nil, errors.New("not authenticated")
 }
 
 func resolveAuth0Token(accessToken string) (*Session, error) {
+	// Try JWT decode first (Auth0 access tokens with audience are JWTs)
+	if session, err := decodeJWTPayload(accessToken); err == nil {
+		return session, nil
+	}
+
+	// Fallback: call Auth0 /userinfo for opaque tokens
 	domain := os.Getenv("AUTH0_DOMAIN")
 	if domain == "" {
 		return nil, errors.New("AUTH0_DOMAIN not set")
@@ -188,6 +201,60 @@ func resolveAuth0Token(accessToken string) (*Session, error) {
 		Name:        info.Name,
 		Picture:     info.Picture,
 		AccessToken: accessToken,
+	}, nil
+}
+
+// decodeJWTPayload extracts claims from a JWT without signature verification.
+// Auth0 JWTs are <header>.<payload>.<signature> — we decode the payload segment.
+func decodeJWTPayload(token string) (*Session, error) {
+	parts := strings.SplitN(token, ".", 3)
+	if len(parts) != 3 {
+		return nil, errors.New("not a JWT")
+	}
+
+	payload := parts[1]
+	// base64url → standard base64
+	payload = strings.ReplaceAll(payload, "-", "+")
+	payload = strings.ReplaceAll(payload, "_", "/")
+	switch len(payload) % 4 {
+	case 2:
+		payload += "=="
+	case 3:
+		payload += "="
+	}
+
+	decoded, err := base64.StdEncoding.DecodeString(payload)
+	if err != nil {
+		return nil, err
+	}
+
+	var claims struct {
+		Sub   string `json:"sub"`
+		Email string `json:"email"`
+		Name  string `json:"name"`
+		Exp   int64  `json:"exp"`
+
+		// Auth0 custom namespace claims or /userinfo fields
+		Picture string `json:"picture"`
+	}
+	if err := json.Unmarshal(decoded, &claims); err != nil {
+		return nil, err
+	}
+
+	if claims.Sub == "" {
+		return nil, errors.New("JWT missing sub claim")
+	}
+
+	if claims.Exp > 0 && time.Now().Unix() > claims.Exp {
+		return nil, errors.New("JWT expired")
+	}
+
+	return &Session{
+		UserID:      claims.Sub,
+		Email:       claims.Email,
+		Name:        claims.Name,
+		Picture:     claims.Picture,
+		AccessToken: token,
 	}, nil
 }
 
