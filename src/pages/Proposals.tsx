@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
-import { FileText, Link2, Bot, Loader2 } from "lucide-react";
+import { FileText, Bot, Loader2 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { ProposalCard } from "@/components/proposals/ProposalCard";
 import { StepUpDialog } from "@/components/auth/StepUpDialog";
