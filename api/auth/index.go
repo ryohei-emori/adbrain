@@ -158,7 +158,18 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 	if errParam != "" {
 		desc := r.URL.Query().Get("error_description")
 		if isConnectFlow {
-			http.Redirect(w, r, baseURL+"/onboarding?connect_error="+url.QueryEscape(desc), http.StatusFound)
+			connectReturnTo := "/dashboard/connections"
+			if cookie, err := r.Cookie("connect_state"); err == nil {
+				parts := strings.Split(cookie.Value, "|")
+				if len(parts) >= 3 {
+					connectReturnTo = parts[2]
+				}
+			}
+			sep := "?"
+			if strings.Contains(connectReturnTo, "?") {
+				sep = "&"
+			}
+			http.Redirect(w, r, baseURL+connectReturnTo+sep+"connect_error="+url.QueryEscape(desc), http.StatusFound)
 			return
 		}
 		http.Error(w, fmt.Sprintf(`{"error":"%s","description":"%s"}`, errParam, desc), http.StatusBadRequest)
@@ -181,7 +192,7 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 
 	if code == "" {
 		if isConnectFlow {
-			http.Redirect(w, r, baseURL+"/onboarding?connect_error=missing_code", http.StatusFound)
+			connectErrorRedirect(w, r, baseURL, "missing_code")
 			return
 		}
 		http.Error(w, `{"error":"missing authorization code"}`, http.StatusBadRequest)
@@ -203,7 +214,7 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 	tokenResp, err := http.PostForm("https://"+domain+"/oauth/token", tokenParams)
 	if err != nil {
 		if isConnectFlow {
-			http.Redirect(w, r, baseURL+"/onboarding?connect_error=token_exchange_failed", http.StatusFound)
+			connectErrorRedirect(w, r, baseURL, "token_exchange_failed")
 			return
 		}
 		http.Error(w, `{"error":"token exchange failed"}`, http.StatusInternalServerError)
@@ -215,7 +226,7 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 	if tokenResp.StatusCode != http.StatusOK {
 		if isConnectFlow {
 			log.Printf("connect token exchange failed (status %d): %s", tokenResp.StatusCode, string(tokenBody))
-			http.Redirect(w, r, baseURL+"/onboarding?connect_error=token_exchange_error", http.StatusFound)
+			connectErrorRedirect(w, r, baseURL, "token_exchange_error")
 			return
 		}
 		http.Error(w, fmt.Sprintf(`{"error":"token exchange failed","details":%s}`, string(tokenBody)), http.StatusInternalServerError)
@@ -225,7 +236,7 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 	var tokens tokenResponse
 	if err := json.Unmarshal(tokenBody, &tokens); err != nil {
 		if isConnectFlow {
-			http.Redirect(w, r, baseURL+"/onboarding?connect_error=parse_error", http.StatusFound)
+			connectErrorRedirect(w, r, baseURL, "parse_error")
 			return
 		}
 		http.Error(w, `{"error":"failed to parse token response"}`, http.StatusInternalServerError)
@@ -238,7 +249,7 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 	userInfoResp, err := http.DefaultClient.Do(userInfoReq)
 	if err != nil {
 		if isConnectFlow {
-			http.Redirect(w, r, baseURL+"/onboarding?connect_error=userinfo_failed", http.StatusFound)
+			connectErrorRedirect(w, r, baseURL, "userinfo_failed")
 			return
 		}
 		http.Error(w, `{"error":"failed to get user info"}`, http.StatusInternalServerError)
@@ -249,16 +260,23 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 	var userInfo userInfoResponse
 	if err := json.NewDecoder(userInfoResp.Body).Decode(&userInfo); err != nil {
 		if isConnectFlow {
-			http.Redirect(w, r, baseURL+"/onboarding?connect_error=userinfo_parse_error", http.StatusFound)
+			connectErrorRedirect(w, r, baseURL, "userinfo_parse_error")
 			return
 		}
 		http.Error(w, `{"error":"failed to parse user info"}`, http.StatusInternalServerError)
 		return
 	}
 
-	// Connect flow: store connection in KV, redirect to onboarding
+	// Connect flow: store connection in KV, redirect to originating page
 	if isConnectFlow && connectProvider != "" {
-		handleConnectCallback(w, r, userInfo.Sub, connectProvider, tokens.AccessToken, baseURL)
+		returnTo := "/dashboard/connections"
+		if cookie, err := r.Cookie("connect_state"); err == nil {
+			parts := strings.Split(cookie.Value, "|")
+			if len(parts) >= 3 {
+				returnTo = parts[2]
+			}
+		}
+		handleConnectCallback(w, r, userInfo.Sub, connectProvider, tokens.AccessToken, baseURL, returnTo)
 		return
 	}
 
@@ -280,7 +298,7 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, baseURL+"/dashboard", http.StatusFound)
 }
 
-func handleConnectCallback(w http.ResponseWriter, r *http.Request, userID, provider, accessToken, baseURL string) {
+func handleConnectCallback(w http.ResponseWriter, r *http.Request, userID, provider, accessToken, baseURL, returnTo string) {
 	kvClient, kvErr := kv.New()
 	if kvErr == nil {
 		scopes := map[string][]string{
@@ -325,8 +343,27 @@ func handleConnectCallback(w http.ResponseWriter, r *http.Request, userID, provi
 		MaxAge: -1,
 	})
 
-	log.Printf("OAuth connect successful: provider=%s user=%s", provider, userID)
-	http.Redirect(w, r, baseURL+"/onboarding?connected="+provider, http.StatusFound)
+	log.Printf("OAuth connect successful: provider=%s user=%s return_to=%s", provider, userID, returnTo)
+	sep := "?"
+	if strings.Contains(returnTo, "?") {
+		sep = "&"
+	}
+	http.Redirect(w, r, baseURL+returnTo+sep+"connected="+provider, http.StatusFound)
+}
+
+func connectErrorRedirect(w http.ResponseWriter, r *http.Request, baseURL, errMsg string) {
+	returnTo := "/dashboard/connections"
+	if cookie, err := r.Cookie("connect_state"); err == nil {
+		parts := strings.Split(cookie.Value, "|")
+		if len(parts) >= 3 {
+			returnTo = parts[2]
+		}
+	}
+	sep := "?"
+	if strings.Contains(returnTo, "?") {
+		sep = "&"
+	}
+	http.Redirect(w, r, baseURL+returnTo+sep+"connect_error="+url.QueryEscape(errMsg), http.StatusFound)
 }
 
 func getBaseURL() string {

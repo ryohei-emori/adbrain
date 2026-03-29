@@ -8,12 +8,30 @@ import { useConnections } from "@/hooks/useConnections";
 import { useToast } from "@/components/shared/Toast";
 
 export function Connections() {
-  const { connections, connect, disconnect, completeConnection, isLoading } =
+  const { connections, connect, disconnect, completeConnection, refresh, isLoading } =
     useConnections();
   const { toast } = useToast();
   const [revokeTarget, setRevokeTarget] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const [completing, setCompleting] = useState(false);
+
+  const connectedParam = searchParams.get("connected");
+  const connectError = searchParams.get("connect_error");
+
+  useEffect(() => {
+    if (connectedParam) {
+      refresh();
+      toast("success", "Account connected", `${connectedParam} has been connected successfully.`);
+      setSearchParams({}, { replace: true });
+    }
+  }, [connectedParam, refresh, toast, setSearchParams]);
+
+  useEffect(() => {
+    if (connectError) {
+      toast("error", "Connection failed", connectError);
+      setSearchParams({}, { replace: true });
+    }
+  }, [connectError, toast, setSearchParams]);
 
   useEffect(() => {
     const connectCode = searchParams.get("connect_code");

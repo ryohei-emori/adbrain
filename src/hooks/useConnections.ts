@@ -119,14 +119,15 @@ export function useConnections() {
     );
   }, []);
 
-  const connect = useCallback(async (provider: string) => {
+  const connect = useCallback(async (provider: string, returnTo?: string) => {
     setIsLoading(true);
     setError(null);
     try {
-      const resp = await fetch(`/api/connect/initiate?provider=${provider}`, {
-        method: "POST",
-        credentials: "include",
-      });
+      const returnPath = returnTo ?? window.location.pathname;
+      const resp = await fetch(
+        `/api/connect/initiate?provider=${provider}&return_to=${encodeURIComponent(returnPath)}`,
+        { method: "POST", credentials: "include" },
+      );
 
       const body = await resp.json().catch(() => ({ error: "" }));
 

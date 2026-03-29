@@ -738,6 +738,65 @@ const SCOPE_LABELS: Record<string, ScopeLabel[]> = {
 └───────────────────────────────────────────────────┘
 ```
 
+### 5.3.1 接続状態同期設計（Connection State Synchronization）
+
+接続状態は **Vercel KV にユーザーID単位で永続化** され、全ページで統一的に参照される。
+
+#### ストレージ
+
+```
+KV Key: connection:{userID}:{provider}
+KV Value: {
+  "provider": "google-ads",
+  "connected": true,
+  "connected_at": "2026-03-24T...",
+  "token_status": "healthy",
+  "scopes": [...],
+  "account_name": "Google Ads Account"
+}
+```
+
+#### フロントエンドの状態取得
+
+```
+GET /api/connect/status → KVからユーザーIDで検索 → { connections: [...] }
+```
+
+`useConnections` フックが全ページで共通の接続状態を返す。
+ページ初期化時に `/api/connect/status` から状態を取得し、ローカルfallbackは使用しない。
+
+#### OAuth フローと return_to
+
+Connect 操作の発信元ページに戻るため、`return_to` パラメータをフローに含める:
+
+```
+Frontend → POST /api/connect/initiate?provider=google-ads&return_to=/dashboard/proposals
+  → connect_state cookie に return_to を保存
+  → Auth0 /authorize → Google → Auth0 callback → /api/auth/callback
+  → connect_state cookie から return_to を取得
+  → redirect: /dashboard/proposals?connected=google-ads
+```
+
+各ページは `?connected=` URLパラメータを検知し、`refresh()` でKVの最新状態を取得する。
+
+#### ページ別の接続状態依存表示
+
+| ページ | 未接続時 | 接続済み |
+|---|---|---|
+| **Dashboard** | "No ad accounts connected" バナー + "Sample data" ラベル | ライブデータ表示 |
+| **Proposals** | ページ内 Connect ボタン + スコープ説明 | Proposal 一覧（接続直後は「分析中」アニメーション） |
+| **Connections** | Empty State + Connect ボタン | ConnectionCard 一覧 |
+| **AppShell サイドバー** | "No accounts" 警告アイコン | 接続済みプラットフォーム名一覧 |
+
+#### Proposals ページ内 Connect フロー
+
+Proposals ページでは Connections ページに遷移せず、ページ内で直接 Connect を完結する:
+
+1. 未接続時: プロバイダ選択 + スコープ説明 + Connect ボタンを表示
+2. Connect ボタン押下: OAuth フロー開始（`return_to=/dashboard/proposals`）
+3. OAuth 完了後: Proposals ページに戻り「Analyzing your campaigns...」アニメーション表示
+4. Agent が Proposal を生成後: 通常の Proposal 一覧を表示
+
 ### 5.4 画面ワイヤーフレーム
 
 #### ランディングページ `/`（未認証時 — 審査員の第一印象）

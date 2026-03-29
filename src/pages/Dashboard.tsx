@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { ArrowRight, Link2 } from "lucide-react";
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { PerformanceChart } from "@/components/dashboard/PerformanceChart";
@@ -14,10 +14,20 @@ import { useToast } from "@/components/shared/Toast";
 export function Dashboard() {
   const { allProposals, approve, reject, isLoading } = useProposals();
   const { metrics, source } = useMetrics();
-  const { connections } = useConnections();
+  const { connections, refresh: refreshConnections } = useConnections();
   const stepUp = useStepUp();
   const { toast } = useToast();
   const [pendingStepUpId, setPendingStepUpId] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const connectedParam = searchParams.get("connected");
+  useEffect(() => {
+    if (connectedParam) {
+      refreshConnections();
+      toast("success", "Connected!", `${connectedParam} has been connected successfully.`);
+      setSearchParams({}, { replace: true });
+    }
+  }, [connectedParam, refreshConnections, toast, setSearchParams]);
 
   const connectedCount = connections.filter(
     (c) => c.status === "connected" && c.provider !== "tiktok-ads",

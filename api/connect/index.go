@@ -103,9 +103,14 @@ func handleInitiate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	returnTo := r.URL.Query().Get("return_to")
+	if returnTo == "" {
+		returnTo = "/dashboard/connections"
+	}
+
 	switch provider {
 	case "google-ads":
-		handleGoogleAdsInitiate(w, session)
+		handleGoogleAdsInitiate(w, session, returnTo)
 	case "meta-ads":
 		handleMetaAdsInitiate(w, session)
 	default:
@@ -116,7 +121,7 @@ func handleInitiate(w http.ResponseWriter, r *http.Request) {
 // handleGoogleAdsInitiate tries two approaches:
 // 1. Auth0 Connected Accounts API (Token Vault) — requires refresh token
 // 2. Auth0 /authorize redirect with connection=google-ads — fallback
-func handleGoogleAdsInitiate(w http.ResponseWriter, session *auth.Session) {
+func handleGoogleAdsInitiate(w http.ResponseWriter, session *auth.Session, returnTo string) {
 	domain := os.Getenv("AUTH0_DOMAIN")
 	clientID := os.Getenv("AUTH0_CLIENT_ID")
 	baseURL := getBaseURL()
@@ -186,7 +191,7 @@ func handleGoogleAdsInitiate(w http.ResponseWriter, session *auth.Session) {
 
 	http.SetCookie(w, &http.Cookie{
 		Name:     "connect_state",
-		Value:    state + "|" + session.UserID,
+		Value:    state + "|" + session.UserID + "|" + returnTo,
 		Path:     "/",
 		MaxAge:   600,
 		HttpOnly: true,
