@@ -1,6 +1,7 @@
-import { createContext, useContext, useState, useCallback, useEffect } from "react";
+import { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 import type { Connection } from "@/lib/mock-data";
+import { useAuth } from "@/hooks/useAuth";
 
 interface APIConnectionStatus {
   provider: string;
@@ -84,12 +85,26 @@ export function ConnectionsProvider({ children }: { children: ReactNode }) {
   const [connections, setConnections] = useState<Connection[]>(DEFAULT_CONNECTIONS);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { getAccessTokenSilently, isAuthenticated } = useAuth();
+  const getTokenRef = useRef(getAccessTokenSilently);
+  getTokenRef.current = getAccessTokenSilently;
+
+  const authFetch = useCallback(async (url: string, init?: RequestInit) => {
+    const headers = new Headers(init?.headers);
+    try {
+      const token = await getTokenRef.current();
+      if (token) headers.set("Authorization", `Bearer ${token}`);
+    } catch {
+      // Token unavailable — continue without
+    }
+    return fetch(url, { ...init, headers, credentials: "include" });
+  }, []);
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const resp = await fetch("/api/connect/status", { credentials: "include" });
+      const resp = await authFetch("/api/connect/status");
       if (!resp.ok) {
         setConnections(DEFAULT_CONNECTIONS);
         return;
@@ -103,11 +118,13 @@ export function ConnectionsProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [authFetch]);
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    if (isAuthenticated) {
+      refresh();
+    }
+  }, [isAuthenticated, refresh]);
 
   const connect = useCallback(
     async (provider: string, returnTo?: string) => {
@@ -115,9 +132,9 @@ export function ConnectionsProvider({ children }: { children: ReactNode }) {
       setError(null);
       try {
         const returnPath = returnTo ?? window.location.pathname;
-        const resp = await fetch(
+        const resp = await authFetch(
           `/api/connect/initiate?provider=${provider}&return_to=${encodeURIComponent(returnPath)}`,
-          { method: "POST", credentials: "include" },
+          { method: "POST" },
         );
 
         const body = await resp.json().catch(() => ({ error: "" }));
@@ -141,7 +158,7 @@ export function ConnectionsProvider({ children }: { children: ReactNode }) {
         setIsLoading(false);
       }
     },
-    [],
+    [authFetch],
   );
 
   const completeConnection = useCallback(
@@ -149,9 +166,9 @@ export function ConnectionsProvider({ children }: { children: ReactNode }) {
       setIsLoading(true);
       setError(null);
       try {
-        const resp = await fetch(
+        const resp = await authFetch(
           `/api/connect/complete?connect_code=${encodeURIComponent(connectCode)}`,
-          { method: "POST", credentials: "include" },
+          { method: "POST" },
         );
         if (!resp.ok) {
           const body = await resp.json().catch(() => ({}));
@@ -167,7 +184,7 @@ export function ConnectionsProvider({ children }: { children: ReactNode }) {
         setIsLoading(false);
       }
     },
-    [refresh],
+    [refresh, authFetch],
   );
 
   const disconnect = useCallback(
@@ -189,9 +206,8 @@ export function ConnectionsProvider({ children }: { children: ReactNode }) {
         ),
       );
       try {
-        await fetch(`/api/connect/disconnect?provider=${provider}`, {
+        await authFetch(`/api/connect/disconnect?provider=${provider}`, {
           method: "POST",
-          credentials: "include",
         });
         await refresh();
       } catch {
@@ -200,7 +216,7 @@ export function ConnectionsProvider({ children }: { children: ReactNode }) {
         setIsLoading(false);
       }
     },
-    [refresh],
+    [refresh, authFetch],
   );
 
   return (

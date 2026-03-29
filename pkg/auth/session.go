@@ -121,31 +121,74 @@ func CreateSession(w http.ResponseWriter, session *Session) error {
 }
 
 func GetSession(r *http.Request) (*Session, error) {
+	// Strategy 1: encrypted session cookie
 	cookie, err := r.Cookie(cookieName)
-	if err != nil {
-		return nil, errors.New("no session cookie")
+	if err == nil {
+		key, err := getSessionSecret()
+		if err == nil {
+			plaintext, err := decrypt(cookie.Value, key)
+			if err == nil {
+				var session Session
+				if json.Unmarshal(plaintext, &session) == nil && time.Now().Unix() <= session.ExpiresAt {
+					return &session, nil
+				}
+			}
+		}
 	}
 
-	key, err := getSessionSecret()
+	// Strategy 2: Auth0 Bearer token → call /userinfo
+	authHeader := r.Header.Get("Authorization")
+	if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
+		token := authHeader[7:]
+		session, err := resolveAuth0Token(token)
+		if err == nil {
+			return session, nil
+		}
+	}
+
+	return nil, errors.New("not authenticated")
+}
+
+func resolveAuth0Token(accessToken string) (*Session, error) {
+	domain := os.Getenv("AUTH0_DOMAIN")
+	if domain == "" {
+		return nil, errors.New("AUTH0_DOMAIN not set")
+	}
+
+	req, err := http.NewRequest("GET", "https://"+domain+"/userinfo", nil)
 	if err != nil {
 		return nil, err
 	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
 
-	plaintext, err := decrypt(cookie.Value, key)
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
 	if err != nil {
-		return nil, errors.New("invalid session: decryption failed")
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return nil, errors.New("auth0 userinfo returned " + resp.Status)
 	}
 
-	var session Session
-	if err := json.Unmarshal(plaintext, &session); err != nil {
-		return nil, errors.New("invalid session: malformed data")
+	var info struct {
+		Sub     string `json:"sub"`
+		Email   string `json:"email"`
+		Name    string `json:"name"`
+		Picture string `json:"picture"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+		return nil, err
 	}
 
-	if time.Now().Unix() > session.ExpiresAt {
-		return nil, errors.New("session expired")
-	}
-
-	return &session, nil
+	return &Session{
+		UserID:      info.Sub,
+		Email:       info.Email,
+		Name:        info.Name,
+		Picture:     info.Picture,
+		AccessToken: accessToken,
+	}, nil
 }
 
 func DestroySession(w http.ResponseWriter) {
