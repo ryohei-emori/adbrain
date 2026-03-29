@@ -165,7 +165,7 @@ func handleGoogleAdsInitiate(w http.ResponseWriter, r *http.Request, session *au
 	params := url.Values{
 		"response_type": {"code"},
 		"client_id":     {clientID},
-		"redirect_uri":  {baseURL + "/api/auth/callback?flow=connect&provider=google-ads"},
+		"redirect_uri":  {baseURL + "/api/connectcb"},
 		"connection":    {"google-ads"},
 		"scope":         {"openid email profile offline_access"},
 		"state":         {state},
