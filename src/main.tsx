@@ -1,6 +1,6 @@
-import React from "react";
+import React, { useCallback } from "react";
 import ReactDOM from "react-dom/client";
-import { BrowserRouter } from "react-router-dom";
+import { BrowserRouter, useNavigate } from "react-router-dom";
 import { Auth0Provider, type AppState } from "@auth0/auth0-react";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/react";
@@ -8,21 +8,17 @@ import { App } from "./App";
 import { auth0Config, isAuth0Configured } from "./lib/auth0";
 import "./index.css";
 
-function onRedirectCallback(appState?: AppState) {
-  const returnTo = appState?.returnTo || "/dashboard";
-  window.history.replaceState({}, document.title, returnTo);
-}
+function Auth0RouterProvider({ children }: { children: React.ReactNode }) {
+  const navigate = useNavigate();
 
-function Root() {
-  const app = (
-    <BrowserRouter>
-      <App />
-      <Analytics />
-      <SpeedInsights />
-    </BrowserRouter>
+  const onRedirectCallback = useCallback(
+    (appState?: AppState) => {
+      navigate(appState?.returnTo || "/dashboard", { replace: true });
+    },
+    [navigate],
   );
 
-  if (!isAuth0Configured) return app;
+  if (!isAuth0Configured) return <>{children}</>;
 
   return (
     <Auth0Provider
@@ -33,8 +29,20 @@ function Root() {
       cacheLocation={auth0Config.cacheLocation}
       onRedirectCallback={onRedirectCallback}
     >
-      {app}
+      {children}
     </Auth0Provider>
+  );
+}
+
+function Root() {
+  return (
+    <BrowserRouter>
+      <Auth0RouterProvider>
+        <App />
+        <Analytics />
+        <SpeedInsights />
+      </Auth0RouterProvider>
+    </BrowserRouter>
   );
 }
 
