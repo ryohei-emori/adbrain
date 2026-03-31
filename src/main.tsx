@@ -8,6 +8,12 @@ import { App } from "./App";
 import { auth0Config, isAuth0Configured } from "./lib/auth0";
 import "./index.css";
 
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.getRegistrations().then((registrations) => {
+    for (const reg of registrations) reg.unregister();
+  });
+}
+
 function Auth0RouterProvider({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
 
