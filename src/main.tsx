@@ -25,7 +25,6 @@ function Auth0RouterProvider({ children }: { children: React.ReactNode }) {
       domain={auth0Config.domain}
       clientId={auth0Config.clientId}
       authorizationParams={auth0Config.authorizationParams}
-      useRefreshTokens={auth0Config.useRefreshTokens}
       cacheLocation={auth0Config.cacheLocation}
       onRedirectCallback={onRedirectCallback}
     >

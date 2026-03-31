@@ -9,7 +9,6 @@ export const auth0Config = {
   authorizationParams: {
     redirect_uri: typeof window !== "undefined" ? window.location.origin : "",
   },
-  useRefreshTokens: true,
   cacheLocation: "localstorage" as const,
 };
 
