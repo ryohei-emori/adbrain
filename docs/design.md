@@ -107,12 +107,13 @@ Auth0 Tenant: adbrain-dev
     ├── Factor: OTP (TOTP)
     └── Policy: Never (Actions で制御)
 ```
-### 2.3 認証フロー（Google Social Login）
+### 2.3 認証フロー（Google Social Login via Auth0 SPA SDK）
 
 ```
 [ユーザー] ──(1)──▶ [React SPA] "Googleでログイン"
                        │
-              (2) Auth0 Universal Login
+              (2) Auth0 SPA SDK loginWithRedirect()
+                  → Auth0 Universal Login
                   connection=google-oauth2
                   scope=openid email profile
                        │
@@ -122,45 +123,78 @@ Auth0 Tenant: adbrain-dev
                    アクセスを求めています"
                   ※ 広告 API 権限はここでは要求しない
                        │
-              (3) 同意 → Auth0 callback
+              (3) 同意 → Auth0 callback → code
                        │
                        ▼
-              [Auth0 /oauth/token]
+              [Auth0 SPA SDK (PKCE)]
+                  Auth0 が code を token に交換（サーバーレス）
                        │
-              (4) ID Token + Access Token + Refresh Token
+              (4) ID Token (JWT) + opaque Access Token
+                  → localStorage にキャッシュ（cacheLocation: "localstorage"）
                   ID Token claims: { sub, email, name, picture }
                        │
                        ▼
+              [React SPA]
+                  ├── onRedirectCallback で遷移先を決定
+                  ├── Auth0Provider が認証状態を管理
+                  └── 初回ログイン → /onboarding へナビゲート
+                       │
+                       ▼
+              [Go Backend] への API 呼出時:
+                  getAccessTokenSilently() or getIdTokenClaims().__raw
+                  → Authorization: Bearer <token> ヘッダーで送信
+                  → Go Backend は /userinfo or JWT decode で検証
+```
+### 2.4 接続フロー（Connect via Auth0 OAuth Broker）
+```
+[ユーザー] ──(1)──▶ [React SPA] "Connect with Google"ボタン
+                       │
+              (2) POST /api/connect/initiate?provider=google-ads&return_to=/onboarding
+                  Authorization: Bearer <ID Token (JWT)>
+                       │
+                       ▼
               [Go Backend]
-                  ├── セッション Cookie 発行（HttpOnly, Secure）
-                  ├── Refresh Token をサーバーサイドに保管
-                  └── 初回ログイン → /onboarding へリダイレクト
+                  ├── Bearer Token を検証（JWT decode or /userinfo）
+                  ├── CSRF state 生成（connect:google-ads:<nonce>）
+                  ├── connect_state cookie 設定（JSON: {state, user_id, return_to, provider}）
+                  └── Auth0 /authorize URL を返却
+                       │
+              (3) connect_uri を受信 → window.location.href でリダイレクト
                        │
                        ▼
-              [React SPA] ── ダッシュボード or オンボーディング
-```
-### 2.4 Token Vault フロー（Connected Accounts）
-```
-[ユーザー] ──(1)──▶ [React] "Google Adsを接続"ボタン
-                       │
-              (2) GET /api/connect/google-ads
+              [Auth0 /authorize]
+                  connection=google-ads, scope=openid email profile offline_access
+                  redirect_uri={BASE_URL}/api/connectcb, prompt=consent
                        │
                        ▼
-              [Go] → Auth0 Connected Accounts フロー開始
+              [Google OAuth Consent Screen]
+                  scope: adwords + profile + email
                        │
-              (3) リダイレクト → Google OAuth Consent Screen
-                       │
-                       ▼
-              [Google] ── scope: adwords ── 同意
-                       │
-              (4) Callback → Auth0 がトークンを Token Vault に格納
+              (4) 同意 → Auth0 /login/callback → Auth0 がトークン処理
                        │
                        ▼
-              [Go] ← Connected Account 登録完了
+              [Auth0] → /api/connectcb?code=...&state=... へリダイレクト
                        │
-              (5) POST /api/connect/status → React に通知
+                       ▼
+              [Go /api/connectcb]
+                  ├── connect_state cookie からuser_id, return_to, provider を取得
+                  ├── Auth0 /oauth/token でcode→token交換（client_secret使用）
+                  ├── Vercel KV に接続状態を保存: connection:{userID}:{provider}
+                  ├── Vercel KV にトークンを保存: token:{userID}:{provider}
+                  ├── connect_state cookie を削除
+                  └── {return_to}?connected=google-ads へリダイレクト
+                       │
+              (5) ProtectedRoute が connected param を検知
+                  → 未認証なら loginWithRedirect（Auth0 セッション再確立）
+                  → 認証済みなら ConnectionsProvider.refresh() でKVから最新状態取得
+                       │
+                       ▼
+              [React SPA] ── 接続済み状態で元のページを表示
 ```
 ### 2.5 Token Exchange フロー（エージェントがAPIを呼ぶとき）
+
+**現在の実装**: KV に保存されたアクセストークンを直接使用。Auth0 Token Vault の token-exchange grant type は将来的に移行予定。
+
 ```
 [LangGraph.js Agent]
     │
@@ -169,7 +203,25 @@ Auth0 Tenant: adbrain-dev
     ▼
 [Go Proxy: /api/proxy/google-ads]
     │
-    │ (2) POST https://{auth0-domain}/oauth/token
+    │ (2) Vercel KV から token:{userID}:google-ads を取得
+    │     → Google の access_token を取得
+    │
+    ▼
+[Go Proxy]
+    │
+    │ (3) Authorization: Bearer <google_access_token>
+    │     developer-token: <GOOGLE_ADS_DEVELOPER_TOKEN>
+    │     GET https://googleads.googleapis.com/v18/customers/{id}/campaigns
+    │
+    ▼
+[Google Ads API] → レスポンスを LangGraph.js に返却
+```
+
+**将来の Token Vault 統合**（Auth0 有料プラン移行時）:
+```
+[Go Proxy: /api/proxy/google-ads]
+    │
+    │ POST https://{auth0-domain}/oauth/token
     │     grant_type: urn:auth0:params:oauth:grant-type:token-exchange
     │     subject_token: <user's Auth0 refresh token>
     │     requested_token_type: urn:auth0:params:oauth:token-type:external-provider-token
@@ -177,17 +229,7 @@ Auth0 Tenant: adbrain-dev
     │
     ▼
 [Auth0 Token Vault]
-    │
-    │ (3) Google の access_token を返却（必要なら自動refresh）
-    │
-    ▼
-[Go Proxy]
-    │
-    │ (4) Authorization: Bearer <google_access_token>
-    │     GET https://googleads.googleapis.com/v18/customers/{id}/campaigns
-    │
-    ▼
-[Google Ads API] → レスポンスを LangGraph.js に返却
+    │ Google の access_token を返却（必要なら自動refresh）
 ```
 ### 2.6 Step-up 認証フロー
 ```
@@ -228,55 +270,71 @@ Auth0 Tenant: adbrain-dev
 [Google Ads / Meta API] ← 変更実行
 ```
 
-### Token Vault Architecture
+### Token Vault Architecture（実装済みフロー）
 
 ```mermaid
 sequenceDiagram
     participant U as User
-    participant FE as Frontend
-    participant BE as Go Backend
-    participant A0 as Auth0
-    participant MA as My Account API
-    participant TV as Token Vault
+    participant FE as React SPA<br/>(Auth0 SPA SDK)
+    participant BE as Go Backend<br/>(Vercel Serverless)
+    participant A0 as Auth0 Tenant<br/>(adbrain-dev)
+    participant G as Google OAuth
+    participant KV as Vercel KV<br/>(Upstash Redis)
     participant GAds as Google Ads API
 
-    Note over U,GAds: Phase 1: Login
-    U->>FE: Click Login
-    FE->>BE: GET /api/auth/login
-    BE->>A0: /authorize (google-oauth2)
-    A0->>U: Google Login Screen
-    U->>A0: Authorize
-    A0->>BE: callback with code
-    BE->>A0: /oauth/token (code exchange)
-    A0-->>BE: access_token + refresh_token
-    BE->>FE: Set session cookie
+    Note over U,GAds: Phase 1: Login（Auth0 SPA SDK + PKCE）
+    U->>FE: Click "Get Started with Google"
+    FE->>A0: loginWithRedirect()<br/>connection=google-oauth2<br/>scope=openid email profile
+    A0->>G: Redirect to Google Login
+    G->>U: Google Account Chooser
+    U->>G: Select account
+    G->>A0: Authorization code
+    A0->>A0: Exchange code for tokens
+    A0->>FE: Redirect to origin with code
+    FE->>FE: Auth0 SPA SDK (PKCE)<br/>exchanges code → tokens<br/>Cache in localStorage
+    Note over FE: ID Token (JWT) + opaque Access Token<br/>stored in localStorage
 
-    Note over U,GAds: Phase 2: Connect Google Ads
-    U->>FE: Click "Connect Google Ads"
-    FE->>BE: POST /api/connect/initiate
-    BE->>A0: Exchange RT for My Account API AT
-    A0-->>BE: my_account_api_access_token
-    BE->>MA: POST /me/v1/connected-accounts/connect
-    MA-->>BE: connect_uri + auth_session
-    BE->>FE: Return connect_uri
-    FE->>U: Redirect to connect_uri
-    U->>A0: Authorize Google Ads scopes
-    A0->>FE: Redirect with connect_code
-    FE->>BE: POST /api/connect/complete
-    BE->>MA: POST /me/v1/connected-accounts/complete
-    MA->>TV: Store Google Ads tokens
-    MA-->>BE: 200 OK
-    BE->>FE: Connection successful
+    Note over U,GAds: Phase 2: Connect Google Ads（OAuth Broker via Auth0）
+    U->>FE: Click "Connect with Google"
+    FE->>FE: getAccessTokenSilently()<br/>→ fallback: getIdTokenClaims().__raw
+    FE->>BE: POST /api/connect/initiate<br/>Authorization: Bearer {ID Token}<br/>?provider=google-ads&return_to=/onboarding
+    BE->>BE: Validate Bearer Token<br/>(JWT decode or Auth0 /userinfo)
+    BE->>BE: Generate CSRF state<br/>Set connect_state cookie<br/>(JSON: {state, user_id, return_to, provider})
+    BE-->>FE: { connect_uri, state }
+    FE->>A0: Redirect to connect_uri<br/>/authorize?connection=google-ads<br/>redirect_uri=/api/connectcb<br/>prompt=consent
+    A0->>G: Redirect to Google<br/>scope=adwords+profile+email
+    G->>U: Google Ads Permission Screen<br/>"auth0.com wants to access<br/>your Google Account"
+    U->>G: Allow
+    G->>A0: Authorization code + scopes
+    A0->>A0: Process callback
+    A0->>U: Auth0 Consent Screen<br/>"Authorize AdBrain Web"
+    U->>A0: Accept
+    A0->>BE: GET /api/connectcb<br/>?code=...&state=...
+    BE->>BE: Parse connect_state cookie<br/>→ user_id, return_to, provider
+    BE->>A0: POST /oauth/token<br/>(code exchange with client_secret)
+    A0-->>BE: access_token (Google Ads scope)
+    BE->>A0: GET /userinfo (verify identity)
+    A0-->>BE: { sub, email }
+    BE->>KV: SET connection:{userID}:google-ads<br/>{ connected:true, token_status:"healthy", ... }
+    BE->>KV: SET token:{userID}:google-ads<br/>{ access_token: "..." }
+    BE->>BE: Clear connect_state cookie
+    BE->>FE: 302 Redirect → /onboarding?connected=google-ads
 
-    Note over U,GAds: Phase 3: Agent Uses Token Vault
-    U->>FE: Approve agent proposal
-    FE->>BE: POST /api/agent/invoke
-    BE->>A0: Token Exchange (RT -> external token)
-    A0->>TV: Retrieve stored Google Ads token
-    A0-->>BE: google_ads_access_token
-    BE->>GAds: GET /campaigns (with token)
-    GAds-->>BE: Campaign data
-    BE->>FE: Agent response
+    Note over FE: ProtectedRoute detects ?connected param
+    FE->>A0: loginWithRedirect() if needed<br/>(re-establish Auth0 session)
+    A0-->>FE: Authenticated
+    FE->>BE: GET /api/connect/status<br/>Authorization: Bearer {token}
+    BE->>KV: GET connection:{userID}:google-ads
+    KV-->>BE: { connected:true, ... }
+    BE-->>FE: { connections: [{provider:"google-ads", connected:true, ...}] }
+    FE->>FE: Update ConnectionsContext<br/>All pages reflect connected state
+
+    Note over U,GAds: Phase 3: Status Sync（全ページ共通）
+    Note over FE: Dashboard: "Connected" badge + Sample data<br/>Proposals: Proposal一覧表示<br/>Connections: "Connected Mar 31" + Disconnect可能
+    FE->>BE: GET /api/connect/status<br/>(on page load / after connect)
+    BE->>KV: GET connection:{userID}:*
+    KV-->>BE: Connection statuses
+    BE-->>FE: Synchronized state for all pages
 ```
 
 ---
@@ -323,36 +381,65 @@ sequenceDiagram
 | メソッド | パス | 説明 | 認証 |
 |---|---|---|---|
 | GET | `/api/auth/login` | Auth0 ログイン開始 | 不要 |
-| GET | `/api/auth/callback` | OAuth callback | 不要 |
-| POST | `/api/auth/logout` | ログアウト | セッション |
-| GET | `/api/connect/status` | Connected Accounts 一覧 | セッション |
-| POST | `/api/connect/google-ads` | Google Ads 接続開始 | セッション |
-| POST | `/api/connect/meta-ads` | Meta Ads 接続開始 | セッション |
-| DELETE | `/api/connect/:provider` | 接続取消 | セッション |
-| POST | `/api/agent/invoke` | エージェント実行 | セッション |
-| GET | `/api/proposals` | 提案一覧 | セッション |
-| POST | `/api/proposals/:id/approve` | 提案承認 | セッション + Step-up |
-| POST | `/api/proposals/:id/reject` | 提案却下 | セッション |
-| GET | `/api/audit/logs` | 監査ログ | セッション |
-| GET | `/api/proxy/google-ads/*` | Google Ads API プロキシ | 内部呼出のみ |
-| GET | `/api/proxy/meta-ads/*` | Meta API プロキシ | 内部呼出のみ |
+| GET | `/api/auth/callback` | OAuth callback（ログイン） | 不要 |
+| POST | `/api/auth/logout` | ログアウト | Session Cookie |
+| GET | `/api/connect?action=status` | 接続状態一覧（KV参照） | Bearer Token or Session Cookie |
+| POST | `/api/connect?action=initiate&provider=...` | 接続開始（Auth0 /authorize URL生成） | Bearer Token |
+| POST | `/api/connect?action=disconnect&provider=...` | 接続取消（KV削除） | Bearer Token |
+| GET | `/api/connectcb` | Connect OAuth callback（専用エンドポイント） | connect_state Cookie |
+| POST | `/api/agent/invoke` | エージェント実行 | Session Cookie |
+| GET | `/api/proposals` | 提案一覧（KV参照） | Bearer Token or Session Cookie |
+| POST | `/api/proposals` | 提案作成（KV保存） | Bearer Token or Session Cookie |
+| PATCH | `/api/proposals?id=...` | 提案承認/却下（KV更新） | Bearer Token or Session Cookie |
+| GET | `/api/audit/logs` | 監査ログ | Session Cookie |
+| GET | `/api/proxy?action=google-ads` | Google Ads API プロキシ | Session Cookie (RefreshToken 必須) |
+| GET | `/api/proxy?action=meta-ads` | Meta API プロキシ | Session Cookie (RefreshToken 必須) |
 | POST | `/api/webhooks/auth0-logs` | Auth0 Log Streams 受信 | Bearer Token |
-| GET | `/api/observability/llm-usage` | LLM 使用量サマリー | セッション |
-### 3.3 Token Exchange 実装（Go）
+| GET | `/api/observability/llm-usage` | LLM 使用量サマリー | Session Cookie |
+### 3.3 Bearer Token 認証実装（Go）
+
+SPA アーキテクチャのため、フロントエンドは Auth0 SPA SDK から取得したトークンを Bearer ヘッダーで送信する。バックエンドは JWT decode → Auth0 `/userinfo` フォールバックの 2 段階で検証する。
+
 ```go
-func exchangeForExternalToken(auth0Domain, clientID, clientSecret, userRefreshToken, connection string) (string, error) {
-    payload := url.Values{
-        "grant_type":           {"urn:auth0:params:oauth:grant-type:token-exchange"},
-        "subject_token":        {userRefreshToken},
-        "subject_token_type":   {"urn:ietf:params:oauth:token-type:refresh_token"},
-        "requested_token_type": {"urn:auth0:params:oauth:token-type:external-provider-token"},
-        "client_id":            {clientID},
-        "client_secret":        {clientSecret},
-        "connection":           {connection},
+func GetSession(r *http.Request) (*Session, error) {
+    // Strategy 1: 暗号化セッション Cookie（従来方式）
+    if cookie, err := r.Cookie("adbrain_session"); err == nil {
+        // AES-GCM decrypt → JSON unmarshal → expiry check
     }
-    resp, err := http.PostForm("https://"+auth0Domain+"/oauth/token", payload)
-    // ... parse access_token from JSON response
+
+    // Strategy 2: Auth0 Bearer Token（SPA方式）
+    if authHeader := r.Header.Get("Authorization"); strings.HasPrefix(authHeader, "Bearer ") {
+        token := authHeader[7:]
+        // (a) JWT decode: base64url payload → { sub, email, name, exp }
+        // (b) Fallback: GET https://{AUTH0_DOMAIN}/userinfo
+        //     Authorization: Bearer <opaque_token>
+        //     → { sub, email, name, picture }
+    }
+    return nil, errors.New("not authenticated")
 }
+```
+
+**Connect フロー: Auth0 /authorize URL 生成**
+
+```go
+func handleGoogleAdsInitiate(w http.ResponseWriter, r *http.Request, session *auth.Session, returnTo string) {
+    state := "connect:google-ads:" + hex.EncodeToString(randomBytes(16))
+    // connect_state cookie: JSON {state, user_id, return_to, provider} → URL-escaped
+    http.SetCookie(w, &http.Cookie{
+        Name: "connect_state", Value: url.QueryEscape(cookieJSON),
+        Path: "/", MaxAge: 600, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode,
+    })
+    params := url.Values{
+        "response_type": {"code"}, "client_id": {clientID},
+        "redirect_uri":  {baseURL + "/api/connectcb"},
+        "connection":    {"google-ads"},
+        "scope":         {"openid email profile offline_access"},
+        "state":         {state}, "prompt": {"consent"},
+    }
+    connectURI := "https://" + domain + "/authorize?" + params.Encode()
+    json.NewEncoder(w).Encode(map[string]string{"connect_uri": connectURI})
+}
+```
 ```
 ### 3.4 リスクスコア算出
 ```go
@@ -770,14 +857,22 @@ GET /api/connect/status → KVからユーザーIDで検索 → { connections: [
 Connect 操作の発信元ページに戻るため、`return_to` パラメータをフローに含める:
 
 ```
-Frontend → POST /api/connect/initiate?provider=google-ads&return_to=/dashboard/proposals
-  → connect_state cookie に return_to を保存
-  → Auth0 /authorize → Google → Auth0 callback → /api/auth/callback
-  → connect_state cookie から return_to を取得
-  → redirect: /dashboard/proposals?connected=google-ads
+Frontend → POST /api/connect/initiate?provider=google-ads&return_to=/onboarding
+  Headers: Authorization: Bearer <ID Token (JWT) or opaque Access Token>
+  → Go Backend: Bearer Token 検証 (JWT decode → fallback: Auth0 /userinfo)
+  → connect_state cookie に {state, user_id, return_to, provider} をJSON+URLエスケープで保存
+  → 返却: { connect_uri: "https://adbrain-dev.jp.auth0.com/authorize?..." }
+  → Frontend: window.location.href = connect_uri
+  → Auth0 /authorize?connection=google-ads&redirect_uri=/api/connectcb&prompt=consent
+  → Google OAuth Consent (scope: adwords)
+  → Auth0 /login/callback → Auth0 Consent → /api/connectcb?code=...&state=...
+  → Go /api/connectcb: cookie解析 → code→token交換 → KV保存 → cookie削除
+  → redirect: /onboarding?connected=google-ads
+  → ProtectedRoute: connected param検知 → 必要に応じてloginWithRedirect
+  → ConnectionsProvider.refresh() → /api/connect/status → KVから最新状態取得
 ```
 
-各ページは `?connected=` URLパラメータを検知し、`refresh()` でKVの最新状態を取得する。
+各ページは `?connected=` URLパラメータを検知し、`await refresh()` でKVの最新状態を取得する。`?connect_error=` の場合はエラートーストを表示する。
 
 #### ページ別の接続状態依存表示
 
@@ -1231,8 +1326,8 @@ function MetricCardSkeleton() {
 | **Tailwind CSS** | スタイリング | ユーティリティファースト、レスポンシブ、モバイルファースト |
 | **Recharts** | チャート | React ネイティブ、軽量、レスポンシブ対応 |
 | **Lucide React** | アイコン | shadcn/ui 推奨、Tree-shakable |
-| **@auth0/auth0-react** | Auth0統合 | 公式 React SDK |
-| **vite-plugin-pwa** | PWA 生成 | manifest.json + Service Worker 自動生成 |
+| **@auth0/auth0-react** | Auth0統合 | 公式 React SDK（SPA、PKCE、cacheLocation: localStorage） |
+| ~~vite-plugin-pwa~~ | ~~PWA~~ | **無効化済み**: Service Worker がOAuth redirect後に古いバンドルをキャッシュし障害を引き起こすため削除 |
 
 ### 5.7 デザイントークン
 
