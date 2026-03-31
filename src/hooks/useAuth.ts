@@ -78,7 +78,13 @@ function useRealAuth(): AuthState {
         try {
           return await auth0.getAccessTokenSilently();
         } catch (e) {
-          console.error("[useAuth] getAccessTokenSilently failed:", e);
+          console.warn("[useAuth] getAccessTokenSilently failed, trying ID token fallback:", e);
+          try {
+            const claims = await auth0.getIdTokenClaims();
+            if (claims?.__raw) return claims.__raw;
+          } catch (e2) {
+            console.error("[useAuth] ID token fallback also failed:", e2);
+          }
           throw e;
         }
       },
