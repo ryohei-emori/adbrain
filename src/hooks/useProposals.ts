@@ -1,13 +1,19 @@
 import { useState, useCallback, useEffect } from "react";
 import { MOCK_PROPOSALS, type Proposal } from "@/lib/mock-data";
+import { useAuthFetch } from "@/hooks/useAuthFetch";
+import { useSystemConfig } from "@/hooks/useSystemConfig";
 
 export type ProposalFilter = "all" | "pending" | "approved" | "rejected";
+export type ProposalSource = "agent" | "kv" | "mock";
 
 export function useProposals() {
   const [proposals, setProposals] = useState<Proposal[]>(MOCK_PROPOSALS);
   const [filter, setFilter] = useState<ProposalFilter>("all");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [source, setSource] = useState<ProposalSource>("mock");
+  const authFetch = useAuthFetch();
+  const { config } = useSystemConfig();
 
   const filtered =
     filter === "all"
@@ -16,9 +22,7 @@ export function useProposals() {
 
   const fetchFromGoAPI = useCallback(async (): Promise<Proposal[] | null> => {
     try {
-      const resp = await fetch("/api/proposals", {
-        credentials: "include",
-      });
+      const resp = await authFetch("/api/proposals");
       if (!resp.ok) return null;
       const data = await resp.json();
       if (data.proposals && Array.isArray(data.proposals) && data.proposals.length > 0) {
@@ -46,13 +50,12 @@ export function useProposals() {
     } catch {
       return null;
     }
-  }, []);
+  }, [authFetch]);
 
   const fetchFromAgent = useCallback(async (): Promise<Proposal[] | null> => {
     try {
-      const resp = await fetch("/api/agent/invoke", {
+      const resp = await authFetch("/api/agent/invoke", {
         method: "POST",
-        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ platforms: ["google_ads", "meta_ads"] }),
       });
@@ -65,7 +68,7 @@ export function useProposals() {
     } catch {
       return null;
     }
-  }, []);
+  }, [authFetch]);
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
@@ -74,18 +77,25 @@ export function useProposals() {
     const goProposals = await fetchFromGoAPI();
     if (goProposals) {
       setProposals(goProposals);
+      setSource("kv");
       setIsLoading(false);
       return;
     }
 
-    const agentProposals = await fetchFromAgent();
-    if (agentProposals) {
-      setProposals(agentProposals);
-    } else {
-      setProposals(MOCK_PROPOSALS);
+    if (config.llmConfigured) {
+      const agentProposals = await fetchFromAgent();
+      if (agentProposals) {
+        setProposals(agentProposals);
+        setSource("agent");
+        setIsLoading(false);
+        return;
+      }
     }
+
+    setProposals(MOCK_PROPOSALS);
+    setSource("mock");
     setIsLoading(false);
-  }, [fetchFromGoAPI, fetchFromAgent]);
+  }, [fetchFromGoAPI, fetchFromAgent, config.llmConfigured]);
 
   useEffect(() => {
     refresh();
@@ -94,9 +104,8 @@ export function useProposals() {
   const approve = useCallback(async (id: string, withMFA = false) => {
     setIsLoading(true);
     try {
-      await fetch(`/api/proposals?id=${id}`, {
+      await authFetch(`/api/proposals?id=${id}`, {
         method: "PATCH",
-        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "approved" }),
       }).catch(() => {});
@@ -115,14 +124,13 @@ export function useProposals() {
       );
       setIsLoading(false);
     }
-  }, []);
+  }, [authFetch]);
 
   const reject = useCallback(async (id: string) => {
     setIsLoading(true);
     try {
-      await fetch(`/api/proposals?id=${id}`, {
+      await authFetch(`/api/proposals?id=${id}`, {
         method: "PATCH",
-        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "rejected" }),
       }).catch(() => {});
@@ -134,7 +142,7 @@ export function useProposals() {
       );
       setIsLoading(false);
     }
-  }, []);
+  }, [authFetch]);
 
   return {
     proposals: filtered,
@@ -146,5 +154,6 @@ export function useProposals() {
     refresh,
     isLoading,
     error,
+    source,
   };
 }

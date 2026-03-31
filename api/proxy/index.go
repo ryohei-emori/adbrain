@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/adbrain/adbrain/pkg/auth"
+	"github.com/adbrain/adbrain/pkg/kv"
 	"github.com/adbrain/adbrain/pkg/middleware"
 )
 
@@ -34,6 +35,42 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// resolveExternalToken obtains an external provider access token using
+// two strategies:
+//  1. Auth0 Token Vault (refresh token exchange) — requires session cookie
+//  2. KV lookup — the connect callback stores tokens at token:{userID}:{provider}
+func resolveExternalToken(session *auth.Session, provider string) (string, time.Duration, error) {
+	start := time.Now()
+
+	if session.RefreshToken != "" {
+		token, dur, err := auth.ExchangeToken(session.RefreshToken, provider)
+		if err == nil {
+			return token, dur, nil
+		}
+		log.Printf("[proxy] token exchange fallthrough: %v, trying KV", err)
+	}
+
+	kvClient, err := kv.New()
+	if err != nil {
+		return "", time.Since(start), fmt.Errorf("no refresh token and KV unavailable: %w", err)
+	}
+
+	raw, err := kvClient.Get("token:" + session.UserID + ":" + provider)
+	if err != nil || raw == "" {
+		return "", time.Since(start), fmt.Errorf("no token in KV for %s:%s", session.UserID, provider)
+	}
+
+	var stored struct {
+		AccessToken string `json:"access_token"`
+	}
+	if err := json.Unmarshal([]byte(raw), &stored); err != nil || stored.AccessToken == "" {
+		return "", time.Since(start), fmt.Errorf("invalid token data in KV for %s:%s", session.UserID, provider)
+	}
+
+	log.Printf("[proxy] resolved token from KV for %s:%s (len=%d)", session.UserID, provider, len(stored.AccessToken))
+	return stored.AccessToken, time.Since(start), nil
+}
+
 func handleGoogleAdsProxy(w http.ResponseWriter, r *http.Request) {
 	reqID := middleware.GetRequestID(r.Context())
 
@@ -43,12 +80,7 @@ func handleGoogleAdsProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if session.RefreshToken == "" {
-		http.Error(w, `{"error":"no refresh token available, please re-authenticate"}`, http.StatusForbidden)
-		return
-	}
-
-	externalToken, tokenExchangeDuration, err := auth.ExchangeToken(session.RefreshToken, "google-ads")
+	externalToken, tokenDuration, err := resolveExternalToken(session, "google-ads")
 	if err != nil {
 		logEntry := middleware.RequestLog{
 			RequestID:       reqID,
@@ -56,12 +88,12 @@ func handleGoogleAdsProxy(w http.ResponseWriter, r *http.Request) {
 			Path:            r.URL.Path,
 			UserID:          session.UserID,
 			Provider:        "google-ads",
-			TokenExchangeMs: float64(tokenExchangeDuration.Milliseconds()),
+			TokenExchangeMs: float64(tokenDuration.Milliseconds()),
 			Error:           err.Error(),
 		}
 		logJSON, _ := json.Marshal(logEntry)
 		log.Println(string(logJSON))
-		http.Error(w, fmt.Sprintf(`{"error":"token exchange failed","details":"%s"}`, err.Error()), http.StatusBadGateway)
+		http.Error(w, fmt.Sprintf(`{"error":"token resolution failed","details":"%s"}`, err.Error()), http.StatusBadGateway)
 		return
 	}
 
@@ -101,7 +133,7 @@ func handleGoogleAdsProxy(w http.ResponseWriter, r *http.Request) {
 			Path:            r.URL.Path,
 			UserID:          session.UserID,
 			Provider:        "google-ads",
-			TokenExchangeMs: float64(tokenExchangeDuration.Milliseconds()),
+			TokenExchangeMs: float64(tokenDuration.Milliseconds()),
 			ExternalAPIMs:   float64(apiDuration.Milliseconds()),
 			Error:           err.Error(),
 		}
@@ -119,7 +151,7 @@ func handleGoogleAdsProxy(w http.ResponseWriter, r *http.Request) {
 		UserID:            session.UserID,
 		Provider:          "google-ads",
 		StatusCode:        resp.StatusCode,
-		TokenExchangeMs:   float64(tokenExchangeDuration.Milliseconds()),
+		TokenExchangeMs:   float64(tokenDuration.Milliseconds()),
 		ExternalAPIMs:     float64(apiDuration.Milliseconds()),
 		ExternalAPIStatus: resp.StatusCode,
 	}
@@ -140,12 +172,7 @@ func handleMetaAdsProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if session.RefreshToken == "" {
-		http.Error(w, `{"error":"no refresh token available, please re-authenticate"}`, http.StatusForbidden)
-		return
-	}
-
-	externalToken, tokenExchangeDuration, err := auth.ExchangeToken(session.RefreshToken, "meta-ads")
+	externalToken, tokenDuration, err := resolveExternalToken(session, "meta-ads")
 	if err != nil {
 		logEntry := middleware.RequestLog{
 			RequestID:       reqID,
@@ -153,12 +180,12 @@ func handleMetaAdsProxy(w http.ResponseWriter, r *http.Request) {
 			Path:            r.URL.Path,
 			UserID:          session.UserID,
 			Provider:        "meta-ads",
-			TokenExchangeMs: float64(tokenExchangeDuration.Milliseconds()),
+			TokenExchangeMs: float64(tokenDuration.Milliseconds()),
 			Error:           err.Error(),
 		}
 		logJSON, _ := json.Marshal(logEntry)
 		log.Println(string(logJSON))
-		http.Error(w, fmt.Sprintf(`{"error":"token exchange failed","details":"%s"}`, err.Error()), http.StatusBadGateway)
+		http.Error(w, fmt.Sprintf(`{"error":"token resolution failed","details":"%s"}`, err.Error()), http.StatusBadGateway)
 		return
 	}
 
@@ -188,7 +215,7 @@ func handleMetaAdsProxy(w http.ResponseWriter, r *http.Request) {
 			Path:            r.URL.Path,
 			UserID:          session.UserID,
 			Provider:        "meta-ads",
-			TokenExchangeMs: float64(tokenExchangeDuration.Milliseconds()),
+			TokenExchangeMs: float64(tokenDuration.Milliseconds()),
 			ExternalAPIMs:   float64(apiDuration.Milliseconds()),
 			Error:           err.Error(),
 		}
@@ -206,7 +233,7 @@ func handleMetaAdsProxy(w http.ResponseWriter, r *http.Request) {
 		UserID:            session.UserID,
 		Provider:          "meta-ads",
 		StatusCode:        resp.StatusCode,
-		TokenExchangeMs:   float64(tokenExchangeDuration.Milliseconds()),
+		TokenExchangeMs:   float64(tokenDuration.Milliseconds()),
 		ExternalAPIMs:     float64(apiDuration.Milliseconds()),
 		ExternalAPIStatus: resp.StatusCode,
 	}

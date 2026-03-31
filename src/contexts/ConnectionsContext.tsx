@@ -1,7 +1,8 @@
-import { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
+import { createContext, useContext, useState, useCallback, useEffect } from "react";
 import type { ReactNode } from "react";
 import type { Connection } from "@/lib/mock-data";
 import { useAuth } from "@/hooks/useAuth";
+import { useAuthFetch } from "@/hooks/useAuthFetch";
 
 interface APIConnectionStatus {
   provider: string;
@@ -85,20 +86,8 @@ export function ConnectionsProvider({ children }: { children: ReactNode }) {
   const [connections, setConnections] = useState<Connection[]>(DEFAULT_CONNECTIONS);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { getAccessTokenSilently, isAuthenticated } = useAuth();
-  const getTokenRef = useRef(getAccessTokenSilently);
-  getTokenRef.current = getAccessTokenSilently;
-
-  const authFetch = useCallback(async (url: string, init?: RequestInit) => {
-    const headers = new Headers(init?.headers);
-    try {
-      const token = await getTokenRef.current();
-      if (token) headers.set("Authorization", `Bearer ${token}`);
-    } catch (e) {
-      console.error("[authFetch] token acquisition failed:", e);
-    }
-    return fetch(url, { ...init, headers, credentials: "include" });
-  }, []);
+  const { isAuthenticated } = useAuth();
+  const authFetch = useAuthFetch();
 
   const refresh = useCallback(async () => {
     setIsLoading(true);

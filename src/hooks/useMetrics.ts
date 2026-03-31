@@ -1,4 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
+import { useAuthFetch } from "@/hooks/useAuthFetch";
+import { useSystemConfig } from "@/hooks/useSystemConfig";
 
 export interface DashboardMetrics {
   spend: { value: string; change: string; trend: "up" | "down"; trendPositive: boolean };
@@ -18,14 +20,26 @@ export function useMetrics() {
   const [metrics, setMetrics] = useState<DashboardMetrics>(MOCK_METRICS);
   const [source, setSource] = useState<"mock" | "live">("mock");
   const [isLoading, setIsLoading] = useState(false);
+  const authFetch = useAuthFetch();
+  const { config } = useSystemConfig();
 
   const fetchLiveMetrics = useCallback(async () => {
+    if (!config.proxyReady) {
+      setMetrics(MOCK_METRICS);
+      setSource("mock");
+      return;
+    }
+
     setIsLoading(true);
     try {
-      const [gadsResp, metaResp] = await Promise.allSettled([
-        fetch("/api/proxy/google-ads?path=/customers", { credentials: "include" }),
-        fetch("/api/proxy/meta-ads?path=/me/adaccounts", { credentials: "include" }),
-      ]);
+      const fetches: Promise<Response>[] = [];
+      if (config.googleDeveloperToken) {
+        fetches.push(authFetch("/api/proxy?action=google-ads&path=/customers"));
+      }
+      if (config.metaConfigured) {
+        fetches.push(authFetch("/api/proxy?action=meta-ads&path=/me/adaccounts"));
+      }
+      const results = await Promise.allSettled(fetches);
 
       let hasLiveData = false;
       let totalSpend = 0;
@@ -34,7 +48,7 @@ export function useMetrics() {
       let totalConversions = 0;
       let totalRevenue = 0;
 
-      for (const result of [gadsResp, metaResp]) {
+      for (const result of results) {
         if (result.status === "fulfilled" && result.value.ok) {
           try {
             const data = await result.value.json();
@@ -97,7 +111,7 @@ export function useMetrics() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [authFetch, config.proxyReady, config.googleDeveloperToken, config.metaConfigured]);
 
   useEffect(() => {
     fetchLiveMetrics();

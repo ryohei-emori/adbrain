@@ -191,20 +191,23 @@ Auth0 Tenant: adbrain-dev
                        ▼
               [React SPA] ── 接続済み状態で元のページを表示
 ```
-### 2.5 Token Exchange フロー（エージェントがAPIを呼ぶとき）
+### 2.5 Token Exchange フロー（エージェント/フロントエンドがAPIを呼ぶとき）
 
-**現在の実装**: KV に保存されたアクセストークンを直接使用。Auth0 Token Vault の token-exchange grant type は将来的に移行予定。
+**統一通信方式**: フロントエンドの全 API 呼び出しは `useAuthFetch` フック経由で Auth0 Bearer Token を付与する。バックエンドは `resolveExternalToken()` で外部トークンを解決する（KV → Token Vault フォールバック）。
 
 ```
-[LangGraph.js Agent]
+[React SPA]
     │
-    │ (1) Tool: fetch_google_ads_data
+    │ (1) useAuthFetch() → Authorization: Bearer <Auth0 token>
+    │     GET /api/proxy?action=google-ads&path=/customers
     │
     ▼
-[Go Proxy: /api/proxy/google-ads]
+[Go Proxy: resolveExternalToken()]
     │
-    │ (2) Vercel KV から token:{userID}:google-ads を取得
-    │     → Google の access_token を取得
+    │ (2a) session.RefreshToken あり → Auth0 Token Vault Exchange
+    │      ↓ 失敗時
+    │ (2b) Vercel KV: GET token:{userID}:google-ads
+    │      → { access_token: "<google_token>" }
     │
     ▼
 [Go Proxy]
@@ -214,17 +217,52 @@ Auth0 Tenant: adbrain-dev
     │     GET https://googleads.googleapis.com/v18/customers/{id}/campaigns
     │
     ▼
-[Google Ads API] → レスポンスを LangGraph.js に返却
+[Google Ads API] → レスポンスを SPA / LangGraph.js に返却
+```
+
+**フロントエンド通信フック階層**:
+```
+useAuthFetch()           ← 共通: Bearer Token 付与
+  ├── ConnectionsContext ← 接続状態管理 (connect, status, disconnect)
+  ├── useMetrics()       ← /api/proxy → Dashboard メトリクス
+  └── useProposals()     ← /api/proposals, /api/agent/invoke → Proposals
+
+useSystemConfig()        ← /api/config → バックエンド環境判定 (キャッシュ付き)
+  → llm_configured       : XAI_API_KEY or GOOGLE_AI_API_KEY が設定済み
+  → proxy_ready          : Developer Token or Meta App Secret が設定済み
+  → google_developer_token, meta_configured, kv_available
+```
+
+**データソース分岐ロジック**:
+```
+┌─────────────────────────────────────────────────────────┐
+│  useMetrics (Dashboard メトリクス)                        │
+│                                                         │
+│  config.proxyReady?                                     │
+│    ├─ YES → authFetch(/api/proxy) → resolveExternalToken│
+│    │        → Google Ads API / Meta API → LIVE data     │
+│    └─ NO  → MOCK_METRICS (Sample data バッジ)            │
+└─────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────┐
+│  useProposals (最適化提案)                                │
+│                                                         │
+│  1. /api/proposals (KV 保存済み) → 存在すれば "kv"        │
+│  2. config.llmConfigured?                               │
+│     ├─ YES → /api/agent/invoke → LangGraph.js Agent     │
+│     │        → LLM 分析 → proposals → "agent"           │
+│     └─ NO  → skip                                       │
+│  3. フォールバック: MOCK_PROPOSALS → "mock"               │
+└─────────────────────────────────────────────────────────┘
 ```
 
 **将来の Token Vault 統合**（Auth0 有料プラン移行時）:
 ```
-[Go Proxy: /api/proxy/google-ads]
+[Go Proxy: resolveExternalToken()]
     │
-    │ POST https://{auth0-domain}/oauth/token
+    │ session.RefreshToken → POST https://{auth0-domain}/oauth/token
     │     grant_type: urn:auth0:params:oauth:grant-type:token-exchange
     │     subject_token: <user's Auth0 refresh token>
-    │     requested_token_type: urn:auth0:params:oauth:token-type:external-provider-token
     │     connection: google-ads
     │
     ▼
@@ -348,6 +386,9 @@ sequenceDiagram
 │   ├── logout.go            # セッション破棄 + Auth0 logout
 │   └── session.go           # セッション検証ミドルウェア
 │
+├── config/
+│   └── index.go             # システム環境判定 (LLM/Proxy 可用性)
+│
 ├── connect/
 │   ├── google-ads.go        # Google Ads Connected Accounts 開始
 │   ├── meta-ads.go          # Meta Ads Connected Accounts 開始
@@ -387,13 +428,14 @@ sequenceDiagram
 | POST | `/api/connect?action=initiate&provider=...` | 接続開始（Auth0 /authorize URL生成） | Bearer Token |
 | POST | `/api/connect?action=disconnect&provider=...` | 接続取消（KV削除） | Bearer Token |
 | GET | `/api/connectcb` | Connect OAuth callback（専用エンドポイント） | connect_state Cookie |
-| POST | `/api/agent/invoke` | エージェント実行 | Session Cookie |
+| GET | `/api/config` | システム環境判定（LLM/Proxy可用性） | 不要（キャッシュ 5分） |
+| POST | `/api/agent/invoke` | エージェント実行 | Bearer Token |
 | GET | `/api/proposals` | 提案一覧（KV参照） | Bearer Token or Session Cookie |
 | POST | `/api/proposals` | 提案作成（KV保存） | Bearer Token or Session Cookie |
 | PATCH | `/api/proposals?id=...` | 提案承認/却下（KV更新） | Bearer Token or Session Cookie |
 | GET | `/api/audit/logs` | 監査ログ | Session Cookie |
-| GET | `/api/proxy?action=google-ads` | Google Ads API プロキシ | Session Cookie (RefreshToken 必須) |
-| GET | `/api/proxy?action=meta-ads` | Meta API プロキシ | Session Cookie (RefreshToken 必須) |
+| GET | `/api/proxy?action=google-ads` | Google Ads API プロキシ | Bearer Token (KV トークン or Token Vault) |
+| GET | `/api/proxy?action=meta-ads` | Meta API プロキシ | Bearer Token (KV トークン or Token Vault) |
 | POST | `/api/webhooks/auth0-logs` | Auth0 Log Streams 受信 | Bearer Token |
 | GET | `/api/observability/llm-usage` | LLM 使用量サマリー | Session Cookie |
 ### 3.3 Bearer Token 認証実装（Go）
@@ -416,6 +458,21 @@ func GetSession(r *http.Request) (*Session, error) {
         //     → { sub, email, name, picture }
     }
     return nil, errors.New("not authenticated")
+}
+```
+
+**外部トークン解決（Proxy で使用）**
+
+```go
+func resolveExternalToken(session *auth.Session, provider string) (string, time.Duration, error) {
+    // Strategy 1: Auth0 Token Vault (refresh token exchange)
+    if session.RefreshToken != "" {
+        token, dur, err := auth.ExchangeToken(session.RefreshToken, provider)
+        if err == nil { return token, dur, nil }
+    }
+    // Strategy 2: KV lookup (connect callback で保存済み)
+    raw := kvClient.Get("token:" + session.UserID + ":" + provider)
+    // → { "access_token": "<google_token>" }
 }
 ```
 
@@ -716,8 +773,11 @@ src/
 │
 ├── hooks/
 │   ├── useAuth.ts                 # Auth0 認証フック
+│   ├── useAuthFetch.ts            # Bearer Token 付き fetch（共通）
 │   ├── useConnections.ts          # Connected Accounts フック
-│   ├── useProposals.ts            # 提案 CRUD フック
+│   ├── useMetrics.ts              # Dashboard メトリクス（proxy_ready 判定付き）
+│   ├── useProposals.ts            # 提案 CRUD（llm_configured 判定付き）
+│   ├── useSystemConfig.ts         # /api/config 環境判定（キャッシュ）
 │   └── useStepUp.ts              # Step-up Auth フック
 │
 ├── lib/
@@ -1968,6 +2028,7 @@ adbrain/
 │
 ├── api/                        # Go Serverless Functions
 │   ├── auth/
+│   ├── config/                 # 環境判定 (LLM/Proxy 可用性)
 │   ├── connect/
 │   ├── proxy/
 │   ├── proposals/

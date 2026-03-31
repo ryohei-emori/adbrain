@@ -12,7 +12,7 @@ import { useConnections } from "@/hooks/useConnections";
 import { useToast } from "@/components/shared/Toast";
 
 export function Dashboard() {
-  const { allProposals, approve, reject, isLoading } = useProposals();
+  const { allProposals, approve, reject, isLoading, source: proposalSource } = useProposals();
   const { metrics, source } = useMetrics();
   const { connections, refresh: refreshConnections } = useConnections();
   const stepUp = useStepUp();
@@ -142,9 +142,14 @@ export function Dashboard() {
                 ({pendingProposals.length} pending)
               </span>
             )}
-            {!hasConnections && (
+            {proposalSource === "mock" && (
               <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500 font-normal">
                 Sample
+              </span>
+            )}
+            {proposalSource === "agent" && (
+              <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-green-900/30 text-green-400 font-normal">
+                AI Agent
               </span>
             )}
           </h2>

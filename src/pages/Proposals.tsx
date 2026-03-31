@@ -19,7 +19,7 @@ const TABS: { value: ProposalFilter; label: string }[] = [
 ];
 
 export function Proposals() {
-  const { proposals, allProposals, filter, setFilter, approve, reject, refresh: refreshProposals, isLoading } =
+  const { proposals, allProposals, filter, setFilter, approve, reject, refresh: refreshProposals, isLoading, source: proposalSource } =
     useProposals();
   const { connections, connect, refresh: refreshConnections } = useConnections();
   const stepUp = useStepUp();
@@ -189,11 +189,23 @@ export function Proposals() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight">Proposals</h1>
-        <p className="text-sm text-zinc-500 mt-1">
-          AI-generated optimization proposals for your campaigns
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">Proposals</h1>
+          <p className="text-sm text-zinc-500 mt-1">
+            AI-generated optimization proposals for your campaigns
+          </p>
+        </div>
+        {proposalSource === "agent" ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-green-900/30 px-2.5 py-1 text-xs font-medium text-green-400">
+            <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
+            AI Agent
+          </span>
+        ) : proposalSource === "mock" ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-800 px-2.5 py-1 text-xs font-medium text-zinc-400">
+            Sample data
+          </span>
+        ) : null}
       </div>
 
       <div className="flex items-center gap-1 rounded-lg bg-zinc-900 p-1 w-fit">
