@@ -12,6 +12,7 @@ export default tseslint.config(
       "coverage/**",
       "infra/**",
       "api/agent/node_modules/**",
+      "public/**",
       "*.config.ts",
       "*.config.js",
       "postcss.config.js",
