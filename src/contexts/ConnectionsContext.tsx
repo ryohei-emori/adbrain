@@ -133,27 +133,6 @@ export function ConnectionsProvider({ children }: { children: ReactNode }) {
       try {
         const returnPath = returnTo ?? window.location.pathname;
 
-        // For google-ads: use direct navigation (302 redirect) so cookies are set
-        // in the same browser navigation chain as the OAuth flow
-        if (provider === "google-ads") {
-          let token = "";
-          try {
-            token = (await getTokenRef.current()) ?? "";
-          } catch {
-            // continue without token
-          }
-          const params = new URLSearchParams({
-            action: "initiate",
-            provider,
-            return_to: returnPath,
-            mode: "redirect",
-            ...(token ? { token } : {}),
-          });
-          window.location.href = `/api/connect?${params.toString()}`;
-          return;
-        }
-
-        // For other providers: use fetch approach (meta-ads demo mode etc.)
         const resp = await authFetch(
           `/api/connect/initiate?provider=${provider}&return_to=${encodeURIComponent(returnPath)}`,
           { method: "POST" },

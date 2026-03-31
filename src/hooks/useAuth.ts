@@ -74,7 +74,16 @@ function useRealAuth(): AuthState {
       loginWithRedirect: (opts?: LoginOptions) =>
         auth0.loginWithRedirect({ appState: opts?.appState }),
       logout: () => auth0.logout({ logoutParams: { returnTo: window.location.origin } }),
-      getAccessTokenSilently: () => auth0.getAccessTokenSilently(),
+      getAccessTokenSilently: async () => {
+        try {
+          return await auth0.getAccessTokenSilently();
+        } catch {
+          // Audience-scoped token failed; retry without audience for opaque token
+          return await auth0.getAccessTokenSilently({
+            authorizationParams: {},
+          });
+        }
+      },
     }),
     [auth0],
   );

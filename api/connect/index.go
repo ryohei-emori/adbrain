@@ -25,9 +25,23 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		handleComplete(w, r)
 	case "disconnect":
 		handleDisconnect(w, r)
+	case "debug-kv":
+		handleDebugKV(w)
 	default:
 		http.Error(w, `{"error":"unknown connect action"}`, http.StatusNotFound)
 	}
+}
+
+func handleDebugKV(w http.ResponseWriter) {
+	kvURL := os.Getenv("KV_REST_API_URL")
+	kvToken := os.Getenv("KV_REST_API_TOKEN")
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"kv_url_set":   kvURL != "",
+		"kv_url_len":   len(kvURL),
+		"kv_token_set": kvToken != "",
+		"kv_token_len": len(kvToken),
+	})
 }
 
 type ConnectionStatus struct {
@@ -86,20 +100,10 @@ var connectionScopes = map[string][]string{
 	"meta-ads":   {"ads_management", "ads_read", "email"},
 }
 
-// handleInitiate supports two modes:
-//   - GET with ?mode=redirect: browser navigation, responds with 302 redirect (sets cookies reliably)
-//   - POST (legacy): returns JSON with connect_uri
 func handleInitiate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost && r.Method != http.MethodGet {
 		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 		return
-	}
-
-	// Accept Bearer token from query param for GET redirects (browser navigation can't set headers)
-	if r.Method == http.MethodGet {
-		if token := r.URL.Query().Get("token"); token != "" {
-			r.Header.Set("Authorization", "Bearer "+token)
-		}
 	}
 
 	session, err := auth.GetSession(r)
@@ -119,11 +123,9 @@ func handleInitiate(w http.ResponseWriter, r *http.Request) {
 		returnTo = "/dashboard/connections"
 	}
 
-	useRedirect := r.URL.Query().Get("mode") == "redirect"
-
 	switch provider {
 	case "google-ads":
-		handleGoogleAdsInitiate(w, r, session, returnTo, useRedirect)
+		handleGoogleAdsInitiate(w, r, session, returnTo)
 	case "meta-ads":
 		handleMetaAdsInitiate(w, session)
 	default:
@@ -131,10 +133,7 @@ func handleInitiate(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleGoogleAdsInitiate tries two approaches:
-// 1. Auth0 Connected Accounts API (Token Vault) — requires refresh token
-// 2. Auth0 /authorize redirect with connection=google-ads — fallback
-func handleGoogleAdsInitiate(w http.ResponseWriter, r *http.Request, session *auth.Session, returnTo string, useRedirect bool) {
+func handleGoogleAdsInitiate(w http.ResponseWriter, r *http.Request, session *auth.Session, returnTo string) {
 	domain := os.Getenv("AUTH0_DOMAIN")
 	clientID := os.Getenv("AUTH0_CLIENT_ID")
 	baseURL := getBaseURL()
@@ -180,12 +179,7 @@ func handleGoogleAdsInitiate(w http.ResponseWriter, r *http.Request, session *au
 	}
 
 	connectURI := "https://" + domain + "/authorize?" + params.Encode()
-	log.Printf("[initiate] provider=google-ads userID=%s returnTo=%s redirect=%v", session.UserID, returnTo, useRedirect)
-
-	if useRedirect {
-		http.Redirect(w, r, connectURI, http.StatusFound)
-		return
-	}
+	log.Printf("[initiate] provider=google-ads userID=%s returnTo=%s", session.UserID, returnTo)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
