@@ -77,16 +77,9 @@ function useRealAuth(): AuthState {
       getAccessTokenSilently: async () => {
         try {
           return await auth0.getAccessTokenSilently();
-        } catch (e1) {
-          console.warn("[useAuth] getAccessTokenSilently with audience failed:", e1);
-          try {
-            return await auth0.getAccessTokenSilently({
-              authorizationParams: {},
-            });
-          } catch (e2) {
-            console.error("[useAuth] getAccessTokenSilently without audience also failed:", e2);
-            throw e2;
-          }
+        } catch (e) {
+          console.error("[useAuth] getAccessTokenSilently failed:", e);
+          throw e;
         }
       },
     }),
