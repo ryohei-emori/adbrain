@@ -94,8 +94,8 @@ export function ConnectionsProvider({ children }: { children: ReactNode }) {
     try {
       const token = await getTokenRef.current();
       if (token) headers.set("Authorization", `Bearer ${token}`);
-    } catch {
-      // Token unavailable — continue without
+    } catch (e) {
+      console.error("[authFetch] token acquisition failed:", e);
     }
     return fetch(url, { ...init, headers, credentials: "include" });
   }, []);

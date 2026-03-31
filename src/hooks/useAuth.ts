@@ -77,11 +77,16 @@ function useRealAuth(): AuthState {
       getAccessTokenSilently: async () => {
         try {
           return await auth0.getAccessTokenSilently();
-        } catch {
-          // Audience-scoped token failed; retry without audience for opaque token
-          return await auth0.getAccessTokenSilently({
-            authorizationParams: {},
-          });
+        } catch (e1) {
+          console.warn("[useAuth] getAccessTokenSilently with audience failed:", e1);
+          try {
+            return await auth0.getAccessTokenSilently({
+              authorizationParams: {},
+            });
+          } catch (e2) {
+            console.error("[useAuth] getAccessTokenSilently without audience also failed:", e2);
+            throw e2;
+          }
         }
       },
     }),
