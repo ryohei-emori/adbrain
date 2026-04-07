@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AdBrain — Devpost project mirror</title>
+    <meta
+      name="description"
+      content="AdBrain on Devpost: demo video, gallery, story, and links. Static mirror for display and print (no Devpost analytics)."
+    />
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #fafafa;
+        --fg: #1a1a1a;
+        --muted: #5c5c5c;
+        --border: #e0e0e0;
+        --accent: #0033a0;
+        --card: #fff;
+        --devpost-blue: #0033a0;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #121212;
+          --fg: #f0f0f0;
+          --muted: #a8a8a8;
+          --border: #333;
+          --accent: #6b9fff;
+          --card: #1e1e1e;
+          --devpost-blue: #6b9fff;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        font-size: 1rem;
+        line-height: 1.6;
+        color: var(--fg);
+        background: var(--bg);
+      }
+      .masthead {
+        background: var(--card);
+        border-bottom: 1px solid var(--border);
+        padding: 0.75rem 1.25rem;
+      }
+      .masthead-inner {
+        max-width: 52rem;
+        margin: 0 auto;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 1rem 1.5rem;
+        justify-content: space-between;
+      }
+      .brand-row {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+      }
+      .brand-row a.devpost-logo {
+        display: flex;
+        align-items: center;
+        text-decoration: none;
+        line-height: 0;
+      }
+      .brand-row img.logo {
+        height: 28px;
+        width: auto;
+      }
+      .brand-row .sep {
+        width: 1px;
+        height: 28px;
+        background: var(--border);
+      }
+      .hackathon-pill {
+        font-size: 0.8rem;
+        color: var(--muted);
+        max-width: 20rem;
+      }
+      .hackathon-pill a {
+        color: var(--accent);
+        font-weight: 600;
+      }
+      .cta-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.45rem 0.9rem;
+        border-radius: 6px;
+        font-size: 0.875rem;
+        font-weight: 600;
+        text-decoration: none;
+        border: 1px solid var(--border);
+        background: var(--bg);
+        color: var(--fg);
+      }
+      .btn-primary {
+        background: var(--devpost-blue);
+        color: #fff;
+        border-color: transparent;
+      }
+      .btn-primary:hover {
+        filter: brightness(1.08);
+      }
+      .wrap {
+        max-width: 46rem;
+        margin: 0 auto;
+        padding: 2rem 1.25rem 4rem;
+      }
+      header.page-title {
+        border-bottom: 1px solid var(--border);
+        padding-bottom: 1.5rem;
+        margin-bottom: 2rem;
+      }
+      h1 {
+        font-size: 1.75rem;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        margin: 0 0 0.5rem;
+      }
+      .tagline {
+        font-size: 1.05rem;
+        color: var(--muted);
+        margin: 0;
+        max-width: 40rem;
+      }
+      .meta {
+        font-size: 0.875rem;
+        color: var(--muted);
+        margin-top: 1rem;
+      }
+      .meta a {
+        color: var(--accent);
+      }
+      .media-block {
+        margin: 1.5rem 0 2rem;
+        border-radius: 10px;
+        overflow: hidden;
+        border: 1px solid var(--border);
+        background: #000;
+      }
+      .media-block h2.section-label {
+        margin: 0;
+        padding: 0.65rem 1rem;
+        font-size: 0.8rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        background: var(--card);
+        color: var(--muted);
+        border-bottom: 1px solid var(--border);
+      }
+      .video-wrap {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        background: #111;
+      }
+      .video-wrap iframe {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        border: 0;
+      }
+      .gallery {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.5rem;
+        padding: 0.5rem;
+        background: var(--card);
+      }
+      @media (min-width: 640px) {
+        .gallery {
+          grid-template-columns: repeat(4, 1fr);
+        }
+      }
+      .gallery a {
+        display: block;
+        border-radius: 6px;
+        overflow: hidden;
+        border: 1px solid var(--border);
+        line-height: 0;
+      }
+      .gallery img {
+        width: 100%;
+        height: auto;
+        vertical-align: middle;
+        aspect-ratio: 16 / 10;
+        object-fit: cover;
+      }
+      h2 {
+        font-size: 1.2rem;
+        margin: 2rem 0 0.75rem;
+        padding-top: 0.5rem;
+        border-top: 1px solid var(--border);
+      }
+      main > h2:first-of-type {
+        border-top: none;
+        padding-top: 0;
+        margin-top: 0;
+      }
+      p,
+      li {
+        margin: 0.5rem 0;
+      }
+      ul {
+        padding-left: 1.25rem;
+      }
+      a {
+        color: var(--accent);
+      }
+      .built-with {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+        list-style: none;
+        padding: 0;
+        margin: 0.75rem 0 0;
+      }
+      .built-with li {
+        margin: 0;
+        font-size: 0.8rem;
+        padding: 0.2rem 0.55rem;
+        border-radius: 999px;
+        background: var(--card);
+        border: 1px solid var(--border);
+      }
+      .callout {
+        margin-top: 2rem;
+        padding: 1rem 1.25rem;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        background: var(--card);
+        font-size: 0.9rem;
+        color: var(--muted);
+      }
+      .footnote {
+        font-size: 0.8rem;
+        color: var(--muted);
+        margin-top: 2rem;
+        padding-top: 1rem;
+        border-top: 1px solid var(--border);
+      }
+      code {
+        font-size: 0.9em;
+        padding: 0.1em 0.35em;
+        border-radius: 4px;
+        background: var(--border);
+      }
+      @media print {
+        body {
+          background: #fff;
+          color: #000;
+        }
+        .wrap {
+          max-width: none;
+          padding: 0;
+        }
+        a {
+          color: #000;
+          text-decoration: underline;
+        }
+        .no-print,
+        .masthead,
+        .media-block {
+          display: none !important;
+        }
+        h2 {
+          page-break-after: avoid;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="masthead no-print">
+      <div class="masthead-inner">
+        <div class="brand-row">
+          <a
+            class="devpost-logo"
+            href="https://devpost.com/software/adbrain-301dtc"
+            title="AdBrain on Devpost"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <img
+              class="logo"
+              src="https://d2dmyh35ffsxbl.cloudfront.net/assets/reimagine2/devpost-logo-25d0005ec83e3b9ef6fce93235bb6d642d7c828f31758ebdb5b7ee87de7d45c3.svg"
+              alt="Devpost"
+              width="120"
+              height="28"
+            />
+          </a>
+          <span class="sep" aria-hidden="true"></span>
+          <p class="hackathon-pill">
+            <a href="https://authorizedtoact.devpost.com/" target="_blank" rel="noopener noreferrer"
+              >Authorized to Act: Auth0 for AI Agents</a
+            >
+          </p>
+        </div>
+        <div class="cta-row">
+          <a
+            class="btn btn-primary"
+            href="https://devpost.com/software/adbrain-301dtc"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Open on Devpost</a
+          >
+          <a class="btn" href="https://adbrain-chi.vercel.app/" target="_blank" rel="noopener noreferrer">Live app</a>
+          <a class="btn" href="https://devpost.com/software/adbrain-301dtc#updates" target="_blank" rel="noopener noreferrer"
+            >Updates</a
+          >
+        </div>
+      </div>
+    </div>
+
+    <div class="wrap">
+      <header class="page-title">
+        <h1>AdBrain</h1>
+        <p class="tagline">
+          AI-Powered Ad Optimization with Enterprise-Grade Security.
+          <span class="meta" style="display: block; margin-top: 0.35rem"
+            >Your AI agent optimizes Google Ads &amp; Meta campaigns while you stay in full control. Every action is
+            authorized, auditable, and revocable.</span
+          >
+        </p>
+        <p class="meta">
+          Static mirror for display / print · Source:
+          <a href="https://devpost.com/software/adbrain-301dtc">devpost.com/software/adbrain-301dtc</a>
+          · Gallery &amp; video URLs match the live Devpost project page (2026-04-07).
+        </p>
+      </header>
+
+      <div class="media-block no-print">
+        <h2 class="section-label">Demo video (YouTube)</h2>
+        <div class="video-wrap">
+          <iframe
+            title="AdBrain demo video"
+            src="https://www.youtube-nocookie.com/embed/0nrM7PY1ZTE?rel=0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowfullscreen
+          ></iframe>
+        </div>
+      </div>
+
+      <div class="media-block no-print">
+        <h2 class="section-label">Screenshots (Devpost gallery)</h2>
+        <div class="gallery">
+          <a
+            href="https://d112y698adiu2z.cloudfront.net/photos/production/software_photos/004/542/992/datas/original.png"
+            target="_blank"
+            rel="noopener noreferrer"
+            ><img src="https://d112y698adiu2z.cloudfront.net/photos/production/software_photos/004/542/992/datas/gallery.jpg" alt="Screenshot 1"
+          /></a>
+          <a
+            href="https://d112y698adiu2z.cloudfront.net/photos/production/software_photos/004/542/991/datas/original.png"
+            target="_blank"
+            rel="noopener noreferrer"
+            ><img src="https://d112y698adiu2z.cloudfront.net/photos/production/software_photos/004/542/991/datas/gallery.jpg" alt="Screenshot 2"
+          /></a>
+          <a
+            href="https://d112y698adiu2z.cloudfront.net/photos/production/software_photos/004/542/994/datas/original.png"
+            target="_blank"
+            rel="noopener noreferrer"
+            ><img src="https://d112y698adiu2z.cloudfront.net/photos/production/software_photos/004/542/994/datas/gallery.jpg" alt="Screenshot 3"
+          /></a>
+          <a
+            href="https://d112y698adiu2z.cloudfront.net/photos/production/software_photos/004/542/993/datas/original.png"
+            target="_blank"
+            rel="noopener noreferrer"
+            ><img src="https://d112y698adiu2z.cloudfront.net/photos/production/software_photos/004/542/993/datas/gallery.jpg" alt="Screenshot 4"
+          /></a>
+        </div>
+      </div>
+
+      <main>
+        <h2>Inspiration</h2>
+        <p>
+          AI agents can move fast on ad accounts—but handing them long-lived OAuth tokens is risky. We built
+          <strong>AdBrain</strong> for the
+          <a href="https://authorizedtoact.devpost.com/">Authorized to Act: Auth0 for AI Agents</a> hackathon to show how
+          <strong>enterprise-style identity</strong> (Token Vault, progressive consent, and step-up MFA) can sit in front
+          of real ad APIs, so optimization stays fast without sacrificing control.
+        </p>
+
+        <h2>What it does</h2>
+        <p>
+          AdBrain is an <strong>AI ad campaign assistant</strong> for <strong>Google Ads</strong> and
+          <strong>Meta Ads</strong>. It connects accounts through <strong>Auth0 Connected Accounts + Token Vault</strong>,
+          surfaces a unified dashboard, and generates <strong>optimization proposals</strong> with plain-language
+          reasoning. <strong>Nothing executes without user approval</strong>;
+          <strong>high-risk actions require MFA</strong> (step-up) before they can proceed. Users can
+          <strong>review scopes</strong>, <strong>disconnect</strong> accounts, and inspect an
+          <strong>audit timeline</strong> (token exchange, API calls, approvals, MFA).
+        </p>
+
+        <h2>How we built it</h2>
+        <ul>
+          <li>
+            <strong>Frontend:</strong> React 18 + TypeScript + Vite, Tailwind CSS, Radix UI, PWA-ready tooling
+            (<code>vite-plugin-pwa</code>), Recharts for performance views, <code>@auth0/auth0-react</code> for Universal
+            Login.
+          </li>
+          <li>
+            <strong>API &amp; security path:</strong> Go 1.22 on <strong>Vercel Serverless</strong> for authenticated
+            routes, Auth0 session/token handling, <strong>RFC 8693-style token exchange</strong> against Auth0, and a
+            <strong>proxy</strong> to Google Ads / Meta APIs so ad tokens stay server-side.
+          </li>
+          <li>
+            <strong>Agent:</strong> <strong>LangGraph.js</strong> (stateless graph, no long-lived checkpoint on the
+            serverless path) with <strong>xAI Grok</strong> via LangChain, <strong>Gemini</strong> as a fallback,
+            structured outputs validated with <strong>Zod</strong>.
+          </li>
+          <li>
+            <strong>Data &amp; ops:</strong> <strong>Vercel KV</strong> for proposal-related persistence where configured;
+            <strong>Vercel Analytics</strong> &amp; <strong>Speed Insights</strong> for product telemetry;
+            <strong>GitHub Actions</strong> for CI/CD; <strong>Terraform</strong> for infrastructure and Auth0-oriented
+            automation as described in our design docs.
+          </li>
+        </ul>
+        <p>
+          Architecture and threat-model details live in our repo under <code>docs/design.md</code> and
+          <code>docs/requirements.md</code>.
+        </p>
+
+        <h2>Challenges we ran into</h2>
+        <ul>
+          <li>
+            <strong>Consent vs. convenience:</strong> Separating <strong>login scopes</strong> (<code>email</code>,
+            <code>profile</code>) from <strong>ad API scopes</strong> (e.g. Google <code>adwords</code>, Meta
+            <code>ads_management</code>) so users see <strong>progressive consent</strong> without a scary first screen.
+          </li>
+          <li>
+            <strong>Serverless + LLM + external APIs:</strong> Keeping invocations within timeouts while still calling
+            Token Vault, ad APIs, and the LLM—leading to a <strong>deliberately stateless</strong> LangGraph design and
+            careful error handling when tokens expire.
+          </li>
+          <li>
+            <strong>Human-in-the-loop that feels real:</strong> Making <strong>risk levels</strong>, <strong>MFA</strong>,
+            and <strong>audit entries</strong> understandable in the UI—not just backend logs.
+          </li>
+        </ul>
+
+        <h2>Accomplishments that we're proud of</h2>
+        <ul>
+          <li>
+            <strong>End-to-end security story:</strong> Token Vault + Connected Accounts + step-up MFA wired to real
+            approval flows in the product—not only in diagrams.
+          </li>
+          <li>
+            <strong>Cross-platform agent:</strong> One flow analyzes <strong>Google + Meta</strong> together and explains
+            <strong>why</strong> a change is suggested.
+          </li>
+          <li>
+            <strong>Production-minded delivery:</strong> CI/CD, infra-as-code, observability hooks, and documentation that
+            map cleanly to hackathon judging criteria.
+          </li>
+        </ul>
+
+        <h2>What we learned</h2>
+        <p>
+          Auth0’s <strong>Token Vault</strong> and <strong>token exchange</strong> patterns are a practical way to let an
+          agent “act on behalf of” a user <strong>without</strong> ever holding classic long-lived refresh tokens in app
+          code the same way a naive OAuth integration would. Pairing that with <strong>explicit UI for scopes</strong>,
+          <strong>revocation</strong>, and <strong>MFA for high-risk actions</strong> is how you keep agentic UX
+          trustworthy.
+        </p>
+
+        <h2>What's next for AdBrain</h2>
+        <ul>
+          <li>Deeper <strong>live</strong> campaign execution paths and richer proposal lifecycle (idempotency, rollbacks).</li>
+          <li>Additional ad platforms (e.g. <strong>TikTok Ads</strong>) using the same <strong>Connected Accounts</strong> pattern.</li>
+          <li>Tighter <strong>Auth0 Log Streams</strong> / SIEM-friendly audit exports for teams.</li>
+        </ul>
+
+        <h2>Bonus Blog Post</h2>
+        <p>
+          Medium article — three production-grade patterns with Auth0 around secure AI agents:
+          <a
+            href="https://medium.com/@ryohei.emori.pub/building-secure-ai-agents-with-auth0-three-patterns-from-production-209a0f1b9366"
+            >Building Secure AI Agents with Auth0: Three Patterns from Production</a
+          >
+        </p>
+
+        <h2>Built with</h2>
+        <p class="meta" style="margin-bottom: 0.25rem">Normalized tag list (Devpost-style)</p>
+        <ul class="built-with">
+          <li>TypeScript</li>
+          <li>Go</li>
+          <li>React</li>
+          <li>Vite</li>
+          <li>Tailwind CSS</li>
+          <li>Radix UI</li>
+          <li>React Router</li>
+          <li>LangGraph.js</li>
+          <li>LangChain.js</li>
+          <li>Zod</li>
+          <li>Auth0</li>
+          <li>Universal Login</li>
+          <li>Token Vault</li>
+          <li>Connected Accounts</li>
+          <li>MFA / Step-up</li>
+          <li>Management API</li>
+          <li>@auth0/auth0-react</li>
+          <li>Vercel</li>
+          <li>Serverless Functions</li>
+          <li>Vercel KV</li>
+          <li>Vercel Analytics</li>
+          <li>Speed Insights</li>
+          <li>xAI Grok API</li>
+          <li>Google Gemini</li>
+          <li>Google Ads API</li>
+          <li>Meta Marketing API</li>
+          <li>GitHub Actions</li>
+          <li>Terraform</li>
+          <li>Vitest</li>
+        </ul>
+
+        <div class="callout no-print">
+          <strong>Updates (#updates)</strong><br />
+          Comments and the update feed on Devpost are not mirrored here. Use
+          <a href="https://devpost.com/software/adbrain-301dtc#updates">#updates on Devpost</a>.
+        </div>
+
+        <p class="footnote">
+          This file is a <strong>sanitized</strong> mirror: it does not include Devpost’s third-party analytics (GTM, New
+          Relic, etc.) from the original HTML. Video and images are loaded from YouTube and Devpost CDN when you view this
+          page online.
+        </p>
+      </main>
+    </div>
+  </body>
+</html>

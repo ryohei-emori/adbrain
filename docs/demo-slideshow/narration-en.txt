@@ -1,0 +1,32 @@
+AdBrain demo — English narration cues (align with demo.md)
+Use as voiceover while each slide is on screen; shorten if slides are replaced with longer takes.
+
+[01–02 Hook]
+AI agents are powerful, but giving them your ad accounts is risky. AdBrain is an AI ad optimizer that uses Auth0 Token Vault so tokens stay in a secure boundary, and every action needs your approval.
+
+[03–04 Security intro]
+Login only requests email and profile at first. Ad account access is a separate step through Connected Accounts, with clear OAuth scopes.
+
+[05 Onboarding / Connect]
+Here we connect Google Ads explicitly. Users see human-readable permissions, not raw scope strings.
+
+[06 Connections]
+Full visibility into connections, token health, and last usage. Revoking access shows exactly what breaks.
+
+[07 Proposals]
+Every proposal shows reasoning, impact, and risk. Nothing runs until you approve.
+
+[08 Agent]
+The agent pulls campaign data through our Go proxy. Tokens move via RFC 8693 token exchange — the agent never sees long-lived secrets.
+
+[09 MFA]
+High-risk actions require step-up MFA before execution.
+
+[10 Audit]
+The audit timeline records token exchanges, API calls, and MFA checks.
+
+[11 Impact / observability]
+The design is provider-agnostic. We also track LLM usage and costs in real time.
+
+[12 Closing]
+AdBrain: AI-powered ad optimization with enterprise-grade security. Built with Auth0 Token Vault, Go, LangGraph.js, and React on Vercel. See our blog for architecture details. Thank you.

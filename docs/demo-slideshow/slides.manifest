@@ -1,0 +1,14 @@
+# image filename (under images/)  duration_seconds
+# Total ~180s (3:00). Edit durations when you swap in real screenshots.
+01-landing-full.png 14
+02-landing-features.png 10
+03-auth0-universal-login.png 16
+04-landing-how-it-works.png 10
+05-REPLACE-onboarding.png 20
+06-REPLACE-connections.png 16
+07-REPLACE-proposals.png 16
+08-REPLACE-dashboard-agent.png 20
+09-REPLACE-mfa.png 18
+10-REPLACE-audit.png 14
+11-REPLACE-settings.png 14
+12-closing-card.png 12
